@@ -1,14 +1,15 @@
 # LogLater
 
-LogLater is a Go library for capturing and replaying structured logs from the standard library's `log/slog` package. It provides a clean interface for testing, debugging, and analyzing log output.
+LogLater is a Go library for capturing and replaying structured logs from the standard library's `log/slog` package. It's designed for testing, debugging, and analyzing log output.
 
 ## Features
 
-- Seamlessly integrates with Go's `log/slog` package
+- Implements the `slog.Handler` interface
 - Thread-safe collection of log records
 - Capture logs during tests or normal operation
 - Replay captured logs to any `slog.Handler`
-- Store and retrieve logs for analysis
+- Preserves group structure and attributes
+- Extensible storage interface
 
 ## Installation
 
@@ -17,6 +18,8 @@ go get github.com/robbyt/go-loglater
 ```
 
 ## Usage
+
+### Basic Usage
 
 ```go
 package main
@@ -33,21 +36,20 @@ func main() {
     // Create a text handler that outputs to stdout
     textHandler := slog.NewTextHandler(os.Stdout, nil)
     
-    // Create our collector with the text handler as the base
+    // Create collector with the text handler as the base
     collector := loglater.NewLogCollector(textHandler)
     
     // Create a logger that uses our collector
     logger := slog.New(collector)
     
-    // Log some events (these will be collected but not output yet)
+    // Log some events (these will be output immediately AND collected)
     logger.Info("Starting application", "version", "1.0.0")
-    logger.Warn("Configuration file not found, using defaults")
-    logger.Error("Failed to connect to database", "error", "connection timeout")
+    logger.Warn("Configuration file not found")
+    logger.Error("Failed to connect to database", "error", "timeout")
     
-    fmt.Println("Logs have been collected but not yet output.")
-    fmt.Println("Now playing logs:")
+    fmt.Println("Now replaying logs:")
     
-    // Now output all the collected logs to the same handler
+    // Replay all the collected logs to the same handler
     err := collector.PlayLogs(textHandler)
     if err != nil {
         fmt.Printf("Error playing logs: %v\n", err)
@@ -55,10 +57,46 @@ func main() {
 }
 ```
 
+### Deferred Logging
+
+To collect logs without immediately printing them:
+
+```go
+// Create a collector with no output handler
+collector := loglater.NewLogCollector(nil)
+
+// Create a logger that uses our collector
+logger := slog.New(collector)
+
+// Log some events (these will only be collected, not output)
+logger.Info("This log is just stored, not output")
+
+// Later, play logs to stdout with another handler
+textHandler := slog.NewTextHandler(os.Stdout, nil)
+collector.PlayLogs(textHandler)
+```
+
+### Working with Groups
+
+LogLater preserves group structure when replaying logs:
+
+```go
+collector := loglater.NewLogCollector(nil)
+logger := slog.New(collector)
+
+// Create loggers with groups
+dbLogger := logger.WithGroup("db")
+apiLogger := logger.WithGroup("api")
+
+// Log with different loggers
+dbLogger.Info("Connected to database", "host", "db.example.com")
+apiLogger.Error("API request failed", "endpoint", "/users", "status", 500)
+
+// Play logs to JSON handler - group structure is preserved
+jsonHandler := slog.NewJSONHandler(os.Stdout, nil)
+collector.PlayLogs(jsonHandler)
+```
+
 ## License
 
 Apache License 2.0
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.

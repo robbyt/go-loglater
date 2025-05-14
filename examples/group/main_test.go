@@ -5,22 +5,35 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/robbyt/go-loglater"
 )
 
-func TestGroupLogDemo(t *testing.T) {
+func TestGroupLogging(t *testing.T) {
 	// Use buffer instead of os.Stdout for testing
 	var buf bytes.Buffer
-	handler := slog.NewTextHandler(&buf, nil)
+	textHandler := slog.NewTextHandler(&buf, nil)
 
-	// Run the group demo function
-	logCount, err := GroupLogDemo(handler)
-	if err != nil {
-		t.Fatalf("GroupLogDemo returned error: %v", err)
-	}
+	// Create collector with the text handler
+	collector := loglater.NewLogCollector(textHandler)
+	logger := slog.New(collector)
 
-	// Verify expected number of logs (5 from service.LogServiceActivity)
-	if logCount != 5 {
-		t.Errorf("Expected 5 logs, got %d", logCount)
+	// Create loggers with different groups
+	dbLogger := logger.WithGroup("db").With("component", "database")
+	apiLogger := logger.WithGroup("api").With("component", "http")
+
+	// Log with the different loggers
+	logger.Info("Service started", "version", "2.1.0")
+	dbLogger.Info("Connected to database", "host", "db.example.com")
+	dbLogger.Error("Query failed", "error", "timeout", "query", "SELECT * FROM users")
+	apiLogger.Info("HTTP server listening", "port", 8080)
+	apiLogger.Warn("Rate limit exceeded", "client", "192.168.1.42", "endpoint", "/api/users")
+
+	// Verify number of logs
+	logs := collector.GetLogs()
+	expectedLogCount := 5
+	if len(logs) != expectedLogCount {
+		t.Errorf("Expected %d logs, got %d", expectedLogCount, len(logs))
 	}
 
 	// Verify log output contains messages from different components
@@ -62,5 +75,31 @@ func TestGroupLogDemo(t *testing.T) {
 		if !strings.Contains(output, msg) {
 			t.Errorf("Expected output to contain message '%s', but it doesn't", msg)
 		}
+	}
+
+	// Test JSON output with a different handler
+	var jsonBuf bytes.Buffer
+	jsonHandler := slog.NewJSONHandler(&jsonBuf, nil)
+
+	// Create a collector with JSON handler
+	jsonCollector := loglater.NewLogCollector(nil)
+	jsonLogger := slog.New(jsonCollector)
+
+	// Create group loggers and log messages
+	jsonLogger.WithGroup("db").Info("Database log", "operation", "query")
+	jsonLogger.WithGroup("api").Error("API error", "status", 500)
+
+	// Replay to JSON handler
+	err := jsonCollector.PlayLogs(jsonHandler)
+	if err != nil {
+		t.Fatalf("PlayLogs failed: %v", err)
+	}
+
+	// Check JSON output
+	jsonOutput := jsonBuf.String()
+
+	// Verify JSON contains proper group structure
+	if !strings.Contains(jsonOutput, `"db":`) || !strings.Contains(jsonOutput, `"api":`) {
+		t.Errorf("JSON output missing group structure: %s", jsonOutput)
 	}
 }
