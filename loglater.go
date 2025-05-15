@@ -9,12 +9,20 @@ import (
 	"github.com/robbyt/go-loglater/storage"
 )
 
-const initialRecordStorageSize = 100
-
-// Storage is an interface for a storage backend
-type Storage interface {
+// StorageWriter writes log records to a storage backend
+type StorageWriter interface {
 	Append(record *storage.Record)
+}
+
+// StorageReader returns ALL log records from a storage backend
+type StorageReader interface {
 	GetAll() []storage.Record
+}
+
+// Storage is the full interface for a storage backend
+type Storage interface {
+	StorageWriter
+	StorageReader
 }
 
 // LogCollector collects log records and can replay them later
@@ -24,13 +32,20 @@ type LogCollector struct {
 	groups  []string
 }
 
-// NewLogCollector creates a new log collector with an underlying handler
-func NewLogCollector(baseHandler slog.Handler) *LogCollector {
-	return &LogCollector{
-		store:   storage.NewRecordStorage(initialRecordStorageSize),
+// NewLogCollector creates a new log collector with an underlying handler and optional configuration
+func NewLogCollector(baseHandler slog.Handler, opts ...Option) *LogCollector {
+	lc := &LogCollector{
+		store:   storage.NewRecordStorage(),
 		handler: baseHandler,
 		groups:  make([]string, 0),
 	}
+
+	// Apply all options
+	for _, opt := range opts {
+		opt(lc)
+	}
+
+	return lc
 }
 
 // Handle implements slog.Handler.Handle
