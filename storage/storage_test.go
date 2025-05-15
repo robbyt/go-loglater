@@ -269,7 +269,7 @@ func TestRecordStorage(t *testing.T) {
 		groups := []string{"group1", "group2"}
 
 		// Create a new Record
-		record := NewRecord(context.Background(), groups, r)
+		record := NewRecord(context.Background(), groups, &r)
 
 		// Verify basic fields
 		if record.Message != "test message" {

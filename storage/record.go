@@ -15,7 +15,12 @@ type Record struct {
 	Groups  []string
 }
 
-func NewRecord(ctx context.Context, groups []string, r slog.Record) *Record {
+// NewRecord creates a new Record from a slog.Record and an optional list of groups (for WithGroup namespacing)
+func NewRecord(ctx context.Context, groups []string, r *slog.Record) *Record {
+	if r == nil {
+		return nil
+	}
+
 	record := &Record{
 		Time:    r.Time,
 		Level:   r.Level,

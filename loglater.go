@@ -2,6 +2,7 @@ package loglater
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"slices"
 
@@ -10,9 +11,15 @@ import (
 
 const initialRecordStorageSize = 100
 
+// Storage is an interface for a storage backend
+type Storage interface {
+	Append(record *storage.Record)
+	GetAll() []storage.Record
+}
+
 // LogCollector collects log records and can replay them later
 type LogCollector struct {
-	store   storage.Storage
+	store   Storage
 	handler slog.Handler
 	groups  []string
 }
@@ -29,7 +36,10 @@ func NewLogCollector(baseHandler slog.Handler) *LogCollector {
 // Handle implements slog.Handler.Handle
 func (c *LogCollector) Handle(ctx context.Context, r slog.Record) error {
 	g := slices.Clone(c.groups)
-	storedRecord := storage.NewRecord(ctx, g, r)
+	storedRecord := storage.NewRecord(ctx, g, &r)
+	if storedRecord == nil {
+		return errors.New("failed to create record")
+	}
 
 	// Store the record in the shared store
 	if c.store != nil {
