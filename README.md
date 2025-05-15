@@ -1,20 +1,19 @@
 # LogLater
 
-LogLater is a Go library for capturing and replaying structured logs from the standard library's `log/slog` package. It's designed for testing, debugging, and analyzing log output.
+LogLater is a Go library for capturing and replaying structured logs from the standard library's `log/slog` package. It implements the `slog.Handler` interface to collect log entries, store them, and replay them later.
 
-## Features
+## Key Benefits
 
-- Implements the `slog.Handler` interface
-- Thread-safe collection of log records
-- Capture logs during tests or normal operation
-- Replay captured logs to any `slog.Handler`
-- Preserves group structure and attributes
-- Extensible storage interface
+- **Zero Dependencies**: Uses only the Go standard library
+- **Stdlib Integration**: Works with the standard `log/slog` package as a `slog.Handler` implementation shim
+- **Format Flexibility**: Collect once, replay to any handler (text, JSON, custom)
+- **Concurrency Support**: Safe for use in multi-goroutine applications
+- **Customize your output**: Capture, replay, or save logs with control over output timing
 
 ## Installation
 
 ```bash
-go get github.com/robbyt/go-loglater
+go get github.com/robbyt/go-loglater@latest
 ```
 
 ## Usage
@@ -36,10 +35,10 @@ func main() {
     // Create a text handler that outputs to stdout
     textHandler := slog.NewTextHandler(os.Stdout, nil)
     
-    // Create collector with the text handler as the base
+    // Create collector with the stdout text handler as the base handler
     collector := loglater.NewLogCollector(textHandler)
     
-    // Create a logger that uses our collector
+    // Create a logger that uses our collector shim
     logger := slog.New(collector)
     
     // Log some events (these will be output immediately AND collected)

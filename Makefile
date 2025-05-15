@@ -17,6 +17,11 @@ help: Makefile
 test:
 	go test -race -cover $(PACKAGES)
 
+## bench: Run benchmarks
+.PHONY: bench
+bench:
+	go test -benchmem -run="^$$" -bench=. $(PACKAGES)
+
 ## lint: Run golangci-lint code quality checks
 .PHONY: lint
 lint:

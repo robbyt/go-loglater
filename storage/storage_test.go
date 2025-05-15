@@ -3,9 +3,168 @@ package storage
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 )
+
+func BenchmarkRecordStorage_Append(b *testing.B) {
+	b.Run("Synchronous", func(b *testing.B) {
+		cases := []struct {
+			name string
+			size int
+			adds int
+		}{
+			{"0", 0, 10},
+			{"1", 1, 10},
+			{"10", 10, 10},
+			{"20", 20, 10},
+		}
+
+		for _, tc := range cases {
+			b.Run(tc.name, func(b *testing.B) {
+				store := NewRecordStorage(tc.size)
+				records := make([]*Record, tc.adds)
+				for i := range tc.adds {
+					records[i] = &Record{
+						Time:    time.Now(),
+						Level:   0,
+						Message: "test",
+						Attrs:   nil,
+						Groups:  nil,
+					}
+				}
+
+				b.ResetTimer()
+				for b.Loop() {
+					for _, rec := range records {
+						store.Append(rec)
+					}
+				}
+			})
+		}
+	})
+
+	b.Run("Asynchronous", func(b *testing.B) {
+		cases := []struct {
+			name string
+			size int
+			adds int
+		}{
+			{"0", 0, 10},
+			{"1", 1, 10},
+			{"10", 10, 10},
+			{"20", 20, 10},
+		}
+
+		for _, tc := range cases {
+			b.Run(tc.name, func(b *testing.B) {
+				store := NewRecordStorage(tc.size)
+				rec := &Record{
+					Time:    time.Now(),
+					Level:   0,
+					Message: "test",
+					Attrs:   nil,
+					Groups:  nil,
+				}
+				b.ResetTimer()
+				for b.Loop() {
+					var wg sync.WaitGroup
+					wg.Add(tc.adds)
+					for range tc.adds {
+						go func() {
+							store.Append(rec)
+							wg.Done()
+						}()
+					}
+					wg.Wait()
+				}
+			})
+		}
+	})
+}
+
+func BenchmarkRecordStorage_GetAll(b *testing.B) {
+	b.Run("Synchronous", func(b *testing.B) {
+		cases := []struct {
+			name string
+			size int
+			gets int
+		}{
+			{"0", 0, 1},
+			{"1", 1, 1},
+			{"10", 10, 1},
+			{"20", 20, 1},
+		}
+
+		rec := &Record{
+			Time:    time.Now(),
+			Level:   0,
+			Message: "test",
+			Attrs:   nil,
+			Groups:  nil,
+		}
+
+		for _, tc := range cases {
+			b.Run(tc.name, func(b *testing.B) {
+				store := NewRecordStorage(tc.size)
+				// Setup: fill the store with some data
+				for i := 0; i < tc.size; i++ {
+					store.Append(rec)
+				}
+				b.ResetTimer()
+				for b.Loop() {
+					for i := 0; i < tc.gets; i++ {
+						_ = store.GetAll()
+					}
+				}
+			})
+		}
+	})
+
+	b.Run("Asynchronous", func(b *testing.B) {
+		cases := []struct {
+			name string
+			size int
+			gets int
+		}{
+			{"0", 0, 10},
+			{"1", 1, 10},
+			{"10", 10, 10},
+			{"20", 20, 10},
+		}
+
+		rec := &Record{
+			Time:    time.Now(),
+			Level:   0,
+			Message: "test",
+			Attrs:   nil,
+			Groups:  nil,
+		}
+
+		for _, tc := range cases {
+			b.Run(tc.name, func(b *testing.B) {
+				store := NewRecordStorage(tc.size)
+				// Setup: fill the store with some data
+				for i := 0; i < tc.size; i++ {
+					store.Append(rec)
+				}
+				b.ResetTimer()
+				for b.Loop() {
+					var wg sync.WaitGroup
+					wg.Add(tc.gets)
+					for i := 0; i < tc.gets; i++ {
+						go func() {
+							_ = store.GetAll()
+							wg.Done()
+						}()
+					}
+					wg.Wait()
+				}
+			})
+		}
+	})
+}
 
 func TestRecordStorage(t *testing.T) {
 	t.Run("NewRecordStorage", func(t *testing.T) {

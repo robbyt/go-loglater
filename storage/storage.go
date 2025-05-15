@@ -17,9 +17,9 @@ type RecordStorage struct {
 	records []Record
 }
 
-func NewRecordStorage(size int) *RecordStorage {
+func NewRecordStorage(startSize int) *RecordStorage {
 	return &RecordStorage{
-		records: make([]Record, 0, size),
+		records: make([]Record, 0, startSize),
 	}
 }
 
