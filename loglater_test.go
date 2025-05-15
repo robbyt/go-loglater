@@ -234,8 +234,8 @@ func TestStorageCapacity(t *testing.T) {
 		collector := NewLogCollector(nil)
 		logger := slog.New(collector)
 
-		// Add more logs than the initial capacity
-		logsToAdd := initialRecordStorageSize * 2
+		// Add more logs than the default capacity
+		logsToAdd := 20 // Default capacity is 10, so this is 2x default
 		for i := 0; i < logsToAdd; i++ {
 			logger.Info("test log", "index", i)
 		}

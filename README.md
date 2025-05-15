@@ -96,6 +96,72 @@ jsonHandler := slog.NewJSONHandler(os.Stdout, nil)
 collector.PlayLogs(jsonHandler)
 ```
 
+### Cleanup Options
+
+LogLater supports automatic cleanup of old log records through storage options:
+
+```go
+import (
+    "context"
+    "github.com/robbyt/go-loglater"
+    "github.com/robbyt/go-loglater/storage"
+)
+
+// Create storage with a maximum size of 1000 records
+store := storage.NewRecordStorage(storage.WithMaxSize(1000))
+collector := loglater.NewLogCollector(nil, loglater.WithStorage(store))
+
+// Create storage that keeps only logs from the last hour
+store := storage.NewRecordStorage(
+    storage.WithMaxAge(1 * time.Hour)
+)
+collector := loglater.NewLogCollector(nil, loglater.WithStorage(store))
+
+// With asynchronous cleanup (uses background goroutine)
+store := storage.NewRecordStorage(
+    storage.WithMaxSize(1000),
+    storage.WithAsyncCleanup(true),
+    storage.WithDebounceTime(500 * time.Millisecond) // Customize debounce time
+)
+collector := loglater.NewLogCollector(nil, loglater.WithStorage(store))
+
+// With cancellable context for the cleanup worker
+ctx, cancel := context.WithCancel(context.Background())
+store := storage.NewRecordStorage(
+    storage.WithContext(ctx),
+    storage.WithMaxSize(1000),
+    storage.WithAsyncCleanup(true)
+)
+collector := loglater.NewLogCollector(nil, loglater.WithStorage(store))
+
+// Cancel the context when you want to stop the worker
+cancel()
+
+// With custom cleanup function
+customCleanup := func(records []storage.Record) []storage.Record {
+    // Keep only error logs
+    var result []storage.Record
+    for _, r := range records {
+        if r.Level >= slog.LevelError {
+            result = append(result, r)
+        }
+    }
+    return result
+}
+
+store := storage.NewRecordStorage(storage.WithCleanupFunc(customCleanup))
+collector := loglater.NewLogCollector(nil, loglater.WithStorage(store))
+
+// Combining multiple options
+store := storage.NewRecordStorage(
+    storage.WithMaxSize(1000),
+    storage.WithMaxAge(24 * time.Hour),
+    storage.WithAsyncCleanup(true),
+    storage.WithPreallocation(500), // Pre-allocate capacity for better performance
+)
+collector := loglater.NewLogCollector(nil, loglater.WithStorage(store))
+```
+
 ## License
 
 Apache License 2.0

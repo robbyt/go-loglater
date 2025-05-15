@@ -12,22 +12,12 @@ import (
 func TestGroupLogging(t *testing.T) {
 	// Use buffer instead of os.Stdout for testing
 	var buf bytes.Buffer
-	textHandler := slog.NewTextHandler(&buf, nil)
 
-	// Create collector with the text handler
-	collector := loglater.NewLogCollector(textHandler)
-	logger := slog.New(collector)
-
-	// Create loggers with different groups
-	dbLogger := logger.WithGroup("db").With("component", "database")
-	apiLogger := logger.WithGroup("api").With("component", "http")
-
-	// Log with the different loggers
-	logger.Info("Service started", "version", "2.1.0")
-	dbLogger.Info("Connected to database", "host", "db.example.com")
-	dbLogger.Error("Query failed", "error", "timeout", "query", "SELECT * FROM users")
-	apiLogger.Info("HTTP server listening", "port", 8080)
-	apiLogger.Warn("Rate limit exceeded", "client", "192.168.1.42", "endpoint", "/api/users")
+	// Use the demo function to generate the logs
+	collector, err := demoGroupLogging(&buf)
+	if err != nil {
+		t.Fatalf("Failed to run demo: %v", err)
+	}
 
 	// Verify number of logs
 	logs := collector.GetLogs()
@@ -90,9 +80,9 @@ func TestGroupLogging(t *testing.T) {
 	jsonLogger.WithGroup("api").Error("API error", "status", 500)
 
 	// Replay to JSON handler
-	err := jsonCollector.PlayLogs(jsonHandler)
-	if err != nil {
-		t.Fatalf("PlayLogs failed: %v", err)
+	playErr := jsonCollector.PlayLogs(jsonHandler)
+	if playErr != nil {
+		t.Fatalf("PlayLogs failed: %v", playErr)
 	}
 
 	// Check JSON output

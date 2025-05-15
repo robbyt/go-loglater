@@ -2,16 +2,16 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 
 	"github.com/robbyt/go-loglater"
 )
 
-func main() {
-	fmt.Println("=== Example 1: Text output with groups ===")
-	// Create a collector with immediate text output
-	textHandler := slog.NewTextHandler(os.Stdout, nil)
+// demoGroupLogging demonstrates logging with groups using LogLater
+func demoGroupLogging(w io.Writer) (*loglater.LogCollector, error) {
+	textHandler := slog.NewTextHandler(w, nil)
 	collector := loglater.NewLogCollector(textHandler)
 	logger := slog.New(collector)
 
@@ -26,6 +26,18 @@ func main() {
 	apiLogger.Info("HTTP server listening", "port", 8080)
 	apiLogger.Warn("Rate limit exceeded", "client", "192.168.1.42", "endpoint", "/api/users")
 
+	return collector, nil
+}
+
+func main() {
+	fmt.Println("=== Example 1: Text output with groups ===")
+	collector, err := demoGroupLogging(os.Stdout)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	textHandler := slog.NewTextHandler(os.Stdout, nil)
 	fmt.Println("\nReplaying logs to the same handler:")
 	if err := collector.PlayLogs(textHandler); err != nil {
 		fmt.Printf("Error replaying logs: %v\n", err)
@@ -42,11 +54,11 @@ func main() {
 	fmt.Println("=== Example 2: JSON output with deferred logging ===")
 	// Create a collector with no immediate output
 	collector = loglater.NewLogCollector(nil)
-	logger = slog.New(collector)
+	logger := slog.New(collector)
 
 	// Create loggers with groups
-	dbLogger = logger.WithGroup("db")
-	apiLogger = logger.WithGroup("api")
+	dbLogger := logger.WithGroup("db")
+	apiLogger := logger.WithGroup("api")
 
 	// Log with different loggers (nothing output yet)
 	dbLogger.Info("Connected to database", "host", "db.example.com")

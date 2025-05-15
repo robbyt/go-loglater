@@ -23,7 +23,7 @@ func BenchmarkRecordStorage_Append(b *testing.B) {
 
 		for _, tc := range cases {
 			b.Run(tc.name, func(b *testing.B) {
-				store := NewRecordStorage(tc.size)
+				store := NewRecordStorage(WithPreallocation(tc.size))
 				records := make([]*Record, tc.adds)
 				for i := range tc.adds {
 					records[i] = &Record{
@@ -59,7 +59,7 @@ func BenchmarkRecordStorage_Append(b *testing.B) {
 
 		for _, tc := range cases {
 			b.Run(tc.name, func(b *testing.B) {
-				store := NewRecordStorage(tc.size)
+				store := NewRecordStorage(WithPreallocation(tc.size))
 				rec := &Record{
 					Time:    time.Now(),
 					Level:   0,
@@ -107,7 +107,7 @@ func BenchmarkRecordStorage_GetAll(b *testing.B) {
 
 		for _, tc := range cases {
 			b.Run(tc.name, func(b *testing.B) {
-				store := NewRecordStorage(tc.size)
+				store := NewRecordStorage(WithPreallocation(tc.size))
 				// Setup: fill the store with some data
 				for i := 0; i < tc.size; i++ {
 					store.Append(rec)
@@ -144,7 +144,7 @@ func BenchmarkRecordStorage_GetAll(b *testing.B) {
 
 		for _, tc := range cases {
 			b.Run(tc.name, func(b *testing.B) {
-				store := NewRecordStorage(tc.size)
+				store := NewRecordStorage(WithPreallocation(tc.size))
 				// Setup: fill the store with some data
 				for i := 0; i < tc.size; i++ {
 					store.Append(rec)
@@ -169,7 +169,7 @@ func BenchmarkRecordStorage_GetAll(b *testing.B) {
 func TestRecordStorage(t *testing.T) {
 	t.Run("NewRecordStorage", func(t *testing.T) {
 		// Create storage with capacity
-		storage := NewRecordStorage(10)
+		storage := NewRecordStorage()
 
 		// Verify initial state
 		records := storage.GetAll()
@@ -180,7 +180,7 @@ func TestRecordStorage(t *testing.T) {
 
 	t.Run("AppendAndGetAll", func(t *testing.T) {
 		// Create storage
-		storage := NewRecordStorage(5)
+		storage := NewRecordStorage(WithPreallocation(5))
 
 		// Create test records
 		record1 := &Record{
