@@ -130,7 +130,6 @@ func (c *LogCollector) PlayLogs(handler slog.Handler) error {
 	if c.store == nil {
 		return nil
 	}
-
 	for _, stored := range c.store.GetAll() {
 		// Apply groups from the stored record
 		currentHandler := handler
@@ -156,9 +155,5 @@ func (c *LogCollector) GetLogs() []storage.Record {
 	if c.store == nil {
 		return nil
 	}
-
-	// Create a copy to avoid exposing the internal slice
-	result := make([]storage.Record, len(c.store.GetAll()))
-	copy(result, c.store.GetAll())
-	return result
+	return c.store.GetAll()
 }
