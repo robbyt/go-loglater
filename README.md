@@ -1,5 +1,10 @@
 # LogLater
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/robbyt/go-loglater.svg)](https://pkg.go.dev/github.com/robbyt/go-loglater)
+[![Go Report Card](https://goreportcard.com/badge/github.com/robbyt/go-loglater)](https://goreportcard.com/report/github.com/robbyt/go-loglater)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=robbyt_go-loglater&metric=coverage)](https://sonarcloud.io/summary/new_code?id=robbyt_go-loglater)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 LogLater is a Go library for capturing and replaying structured logs from the standard library's `log/slog` package. It implements the `slog.Handler` interface to collect log entries, store them, and replay them later.
 
 ## Key Benefits
