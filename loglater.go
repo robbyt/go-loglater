@@ -140,12 +140,25 @@ func (c *LogCollector) WithGroup(name string) slog.Handler {
 	}
 }
 
-// PlayLogs outputs all stored logs to the provided handler
-func (c *LogCollector) PlayLogs(handler slog.Handler) error {
+// PlayLogsCtx outputs all stored logs to the provided handler with context support
+func (c *LogCollector) PlayLogsCtx(ctx context.Context, handler slog.Handler) error {
 	if c.store == nil {
 		return nil
 	}
+
+	if handler == nil {
+		return errors.New("handler is nil")
+	}
+
 	for _, stored := range c.store.GetAll() {
+		select {
+		case <-ctx.Done():
+			// handle context cancellation between log entries
+			return ctx.Err()
+		default:
+			// continue processing
+		}
+
 		currentHandler := handler
 
 		// Apply groups from the stored records
@@ -160,11 +173,16 @@ func (c *LogCollector) PlayLogs(handler slog.Handler) error {
 		}
 
 		// Forward to the new handler from this function's input
-		if err := currentHandler.Handle(context.Background(), r); err != nil {
+		if err := currentHandler.Handle(ctx, r); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// PlayLogs outputs all stored logs to the provided handler using a background context
+func (c *LogCollector) PlayLogs(handler slog.Handler) error {
+	return c.PlayLogsCtx(context.Background(), handler)
 }
 
 // GetLogs returns a copy of the collected logs
