@@ -40,7 +40,7 @@ jobs:
             -Dsonar.organization=robbyt
             -Dsonar.go.coverage.reportPaths=unit.coverage.out
             -Dsonar.sources=.
-            -Dsonar.coverage.exclusions=examples/**
+            -Dsonar.coverage.exclusions=examples/**/*
             -Dsonar.exclusions=**/*_test.go
             -Dsonar.tests=.
             -Dsonar.test.inclusions=**/*_test.go
