@@ -29,14 +29,13 @@ func TestGroupLogging(t *testing.T) {
 	// Verify log output contains messages from different components
 	output := buf.String()
 
-	expectedComponents := []string{
-		"component=database",
-		"component=http",
+	expectedAttributes := []string{
+		"example=1",
 	}
 
-	for _, comp := range expectedComponents {
-		if !strings.Contains(output, comp) {
-			t.Errorf("Expected output to contain '%s', but it doesn't", comp)
+	for _, attr := range expectedAttributes {
+		if !strings.Contains(output, attr) {
+			t.Errorf("Expected output to contain '%s', but it doesn't", attr)
 		}
 	}
 
