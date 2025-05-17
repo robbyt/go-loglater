@@ -20,7 +20,7 @@ func demoSizeLimitedLogs() (*loglater.LogCollector, error) {
 	logger := slog.New(collector)
 
 	// Log 5 messages, but only the most recent 3 will be kept
-	for i := 1; i <= 5; i++ {
+	for i := range 5 {
 		logger.Info(fmt.Sprintf("Message %d", i))
 	}
 

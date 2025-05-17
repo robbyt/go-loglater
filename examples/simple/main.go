@@ -8,8 +8,12 @@ import (
 	"github.com/robbyt/go-loglater"
 )
 
-// LogDemo demonstrates the basic functionality of the loglater package
-// It returns the number of logs captured for testing purposes
+// LogDemo demonstrates the basic functionality of the loglater package.
+// It creates a log collector, logs several messages, and then replays them.
+// It also shows how loglater can work with both immediate and deferred logging patterns.
+//
+// Parameters:
+//   - handler: An slog.Handler to output logs. If nil, logs are only collected until replay.
 func LogDemo(handler slog.Handler) (int, error) {
 	// Create our collector with the handler as the base
 	collector := loglater.NewLogCollector(handler)
