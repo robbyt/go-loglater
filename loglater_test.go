@@ -99,6 +99,54 @@ func TestLogCollector(t *testing.T) {
 		}
 	})
 
+	t.Run("CollectsAndPlaysLogsWithContext", func(t *testing.T) {
+		// Create a buffer for capturing output
+		var buf bytes.Buffer
+
+		// Create a JSON handler outputting to the buffer
+		jsonHandler := slog.NewJSONHandler(&buf, nil)
+
+		// Create collector with no output handler (nil)
+		collector := NewLogCollector(nil)
+
+		// Create logger that uses our collector
+		logger := slog.New(collector)
+
+		// Log some events
+		logger.WithGroup("app").Info("Starting up", "version", "1.0")
+		logger.Error("Something failed", "error", "test error")
+
+		// Now play the logs to the JSON handler with explicit context
+		ctx := context.Background()
+		if err := collector.PlayLogsCtx(ctx, jsonHandler); err != nil {
+			t.Fatalf("unexpected error playing logs with context: %v", err)
+		}
+
+		// Parse the output into JSON
+		output := buf.String()
+		lines := strings.Split(strings.TrimSpace(output), "\n")
+		if len(lines) != 2 {
+			t.Fatalf("expected 2 lines of JSON output, got %d", len(lines))
+		}
+
+		// Test the first log entry (info message)
+		var logEntry map[string]interface{}
+		if err := json.Unmarshal([]byte(lines[0]), &logEntry); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+
+		// Check for nested structure with groups
+		app, ok := logEntry["app"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("Expected app group in output, got: %v", logEntry)
+		}
+
+		version, ok := app["version"].(string)
+		if !ok || version != "1.0" {
+			t.Errorf("Expected app.version=1.0, got: %v", app)
+		}
+	})
+
 	t.Run("ForwardsToUnderlyingHandler", func(t *testing.T) {
 		// Create a buffer for capturing immediate output
 		var forwardBuf bytes.Buffer
@@ -207,6 +255,34 @@ func (h *errorHandler) WithGroup(name string) slog.Handler {
 	return h
 }
 
+// sleepyHandler is a test handler that sleeps before handling records
+type sleepyHandler struct {
+	sleepTime time.Duration
+}
+
+func (h *sleepyHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return true
+}
+
+func (h *sleepyHandler) Handle(ctx context.Context, r slog.Record) error {
+	time.Sleep(h.sleepTime)
+	// Check if context was canceled during sleep
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return nil
+	}
+}
+
+func (h *sleepyHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return h
+}
+
+func (h *sleepyHandler) WithGroup(name string) slog.Handler {
+	return h
+}
+
 func TestStorageTypes(t *testing.T) {
 	// Verify we can work with the storage types
 	var record storage.Record
@@ -298,6 +374,32 @@ func TestEdgeCases(t *testing.T) {
 		}
 	})
 
+	t.Run("PlayLogsNilHandler", func(t *testing.T) {
+		// Create a collector with some data
+		collector := NewLogCollector(nil)
+		logger := slog.New(collector)
+		logger.Info("Test message")
+
+		// Should return error for nil handler
+		err := collector.PlayLogs(nil)
+		if err == nil || !strings.Contains(err.Error(), "handler is nil") {
+			t.Errorf("Expected error for nil handler, got: %v", err)
+		}
+	})
+
+	t.Run("PlayLogsCtxNilHandler", func(t *testing.T) {
+		// Create a collector with some data
+		collector := NewLogCollector(nil)
+		logger := slog.New(collector)
+		logger.Info("Test message")
+
+		// Should return error for nil handler
+		err := collector.PlayLogsCtx(context.Background(), nil)
+		if err == nil || !strings.Contains(err.Error(), "handler is nil") {
+			t.Errorf("Expected error for nil handler, got: %v", err)
+		}
+	})
+
 	t.Run("PlayLogsErrorHandler", func(t *testing.T) {
 		// Create a collector with some test data
 		collector := NewLogCollector(nil)
@@ -316,6 +418,49 @@ func TestEdgeCases(t *testing.T) {
 		// Should propagate the error
 		if err != io.ErrUnexpectedEOF {
 			t.Errorf("Expected PlayLogs to return io.ErrUnexpectedEOF, got %v", err)
+		}
+	})
+
+	t.Run("PlayLogsCtxCancellation", func(t *testing.T) {
+		// Create a collector with multiple logs
+		collector := NewLogCollector(nil)
+		logger := slog.New(collector)
+		
+		// Add several logs to ensure we have enough to process
+		for i := 0; i < 5; i++ {
+			logger.Info("Test message", "index", i)
+		}
+		
+		// Create a canceled context
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+		
+		// Should return context.Canceled error
+		err := collector.PlayLogsCtx(ctx, slog.NewTextHandler(io.Discard, nil))
+		if err != context.Canceled {
+			t.Errorf("Expected context.Canceled error, got: %v", err)
+		}
+	})
+
+	t.Run("PlayLogsCtxTimeout", func(t *testing.T) {
+		// Create a collector with some test data
+		collector := NewLogCollector(nil)
+		logger := slog.New(collector)
+		logger.Info("Test message")
+		
+		// Create a context with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+		
+		// Create a handler that sleeps to trigger timeout
+		slowHandler := &sleepyHandler{
+			sleepTime: 100 * time.Millisecond,
+		}
+		
+		// Should return context.DeadlineExceeded error
+		err := collector.PlayLogsCtx(ctx, slowHandler)
+		if err != context.DeadlineExceeded {
+			t.Errorf("Expected context.DeadlineExceeded error, got: %v", err)
 		}
 	})
 
