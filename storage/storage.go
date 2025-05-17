@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// MemStorage holds the log records in memory, and
+// MemStorage holds the log records in memory, and implements the Storage interface.
 type MemStorage struct {
 	mu                  sync.RWMutex
 	records             []Record
@@ -21,7 +21,7 @@ type MemStorage struct {
 	asyncCleanupRunning atomic.Bool
 }
 
-// NewRecordStorage creates a new RecordStorage instance
+// NewRecordStorage creates a new MemStorage instance.
 func NewRecordStorage(opts ...Option) *MemStorage {
 	rs := &MemStorage{
 		records:         make([]Record, 0, 10), // Default preallocation size of 10
@@ -43,7 +43,7 @@ func NewRecordStorage(opts ...Option) *MemStorage {
 	return rs
 }
 
-// StartCleanupWorker handles async cleanup operations in a go routine
+// StartCleanupWorker handles async cleanup operations in a go routine.
 func (s *MemStorage) StartCleanupWorker() {
 	if !s.asyncCleanupRunning.CompareAndSwap(false, true) {
 		// Already running, exit
@@ -82,7 +82,7 @@ func (s *MemStorage) StartCleanupWorker() {
 	}
 }
 
-// performCleanup executes the cleanup function if set
+// performCleanup executes the cleanup function if set.
 func (s *MemStorage) performCleanup() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -92,7 +92,7 @@ func (s *MemStorage) performCleanup() {
 	}
 }
 
-// triggerCleanup triggers a cleanup operation
+// triggerCleanup triggers a cleanup operation.
 func (s *MemStorage) triggerCleanup() {
 	if !s.asyncCleanupEnabled {
 		s.performCleanup()
@@ -107,7 +107,7 @@ func (s *MemStorage) triggerCleanup() {
 	}
 }
 
-// Append adds a record to the storage
+// Append adds a record to the storage.
 func (s *MemStorage) Append(record *Record) {
 	s.mu.Lock()
 	s.records = append(s.records, *record)
@@ -119,7 +119,7 @@ func (s *MemStorage) Append(record *Record) {
 	}
 }
 
-// GetAll returns a copy of all records
+// GetAll returns a copy of all records.
 func (s *MemStorage) GetAll() []Record {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

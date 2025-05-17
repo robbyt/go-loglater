@@ -15,22 +15,19 @@ func WithPreallocation(size int) Option {
 	}
 }
 
-// WithAsyncCleanup enables or disables asynchronous cleanup.
-// When enabled, cleanup will run in a background goroutine.
+// WithAsyncCleanup enables or disables asynchronous cleanup for records.
 func WithAsyncCleanup(enabled bool) Option {
 	return func(rs *MemStorage) {
 		rs.asyncCleanupEnabled = enabled
 	}
 }
 
-// WithMaxSize sets a maximum size for the record store.
-// When exceeded, oldest records are removed.
+// WithMaxSize sets a maximum size for the record store, removing oldest records when exceeded.
 func WithMaxSize(maxSize int) Option {
 	return WithCleanupFunc(maxSizeCleanup(maxSize))
 }
 
-// WithMaxAge sets a maximum age for records.
-// Records older than maxAge will be removed.
+// WithMaxAge sets a maximum age for records, removing them when exceeded.
 func WithMaxAge(maxAge time.Duration) Option {
 	return WithCleanupFunc(maxAgeCleanup(maxAge))
 }
@@ -53,8 +50,8 @@ func WithContext(ctx context.Context) Option {
 }
 
 // WithDebounceTime sets the debounce time for async cleanup operations.
-// This controls how frequently cleanup operations can run to avoid excessive processing.
-// Default is 100ms.
+// This controls how frequently async cleanup operations are triggered.
+// Default is 10 seconds.
 func WithDebounceTime(duration time.Duration) Option {
 	return func(rs *MemStorage) {
 		if duration > 0 {

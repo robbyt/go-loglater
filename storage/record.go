@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Record represents a log Record that can be stored
+// Record represents a log Record that can be stored, somewhere.
 type Record struct {
 	Time    time.Time
 	Level   slog.Level
@@ -15,8 +15,8 @@ type Record struct {
 	Groups  []string
 }
 
-// NewRecord creates a new Record from a slog.Record and an optional list of groups (for WithGroup namespacing)
-func NewRecord(ctx context.Context, groups []string, r *slog.Record) *Record {
+// NewRecord creates a new Record from a slog.Record and an optional list of groups (for WithGroup namespacing).
+func NewRecord(_ context.Context, groups []string, r *slog.Record) *Record {
 	if r == nil {
 		return nil
 	}
