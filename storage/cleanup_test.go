@@ -10,7 +10,7 @@ import (
 )
 
 // setupTestStorage creates a storage with the specified number of test records
-func setupTestStorage(tb testing.TB, size int, opts ...Option) (*RecordStorage, []*Record) {
+func setupTestStorage(tb testing.TB, size int, opts ...Option) (*MemStorage, []*Record) {
 	tb.Helper()
 	storage := NewRecordStorage(opts...)
 	records := make([]*Record, size)
