@@ -30,6 +30,7 @@ type LogCollector struct {
 	store   Storage
 	handler slog.Handler
 	groups  []string
+	attrs   []slog.Attr
 }
 
 // NewLogCollector creates a new log collector with an underlying handler and optional configuration
@@ -38,6 +39,7 @@ func NewLogCollector(baseHandler slog.Handler, opts ...Option) *LogCollector {
 		store:   storage.NewRecordStorage(),
 		handler: baseHandler,
 		groups:  make([]string, 0),
+		attrs:   make([]slog.Attr, 0),
 	}
 
 	// Apply all options
@@ -56,7 +58,11 @@ func (c *LogCollector) Handle(ctx context.Context, r slog.Record) error {
 		return errors.New("failed to create record")
 	}
 
-	// Store the record in the shared store
+	// Add the collector's attributes to the stored record, added via WithAttrs()
+	if len(c.attrs) > 0 {
+		storedRecord.Attrs = append(storedRecord.Attrs, c.attrs...)
+	}
+
 	if c.store != nil {
 		c.store.Append(storedRecord)
 	}
@@ -89,14 +95,19 @@ func (c *LogCollector) WithAttrs(attrs []slog.Attr) slog.Handler {
 		newHandler = c.handler.WithAttrs(attrs)
 	}
 
-	// Create a deep copy of the groups slice
+	// Create a deep copy of the groups and attrs slices
 	groupsCopy := slices.Clone(c.groups)
+	attrsCopy := slices.Clone(c.attrs)
+
+	// Append the new attributes
+	attrsCopy = append(attrsCopy, attrs...)
 
 	// Create a new collector that shares the same record store
 	return &LogCollector{
 		store:   c.store,
 		handler: newHandler,
 		groups:  groupsCopy,
+		attrs:   attrsCopy,
 	}
 }
 
@@ -117,11 +128,15 @@ func (c *LogCollector) WithGroup(name string) slog.Handler {
 	newGroups := slices.Clone(c.groups)
 	newGroups = append(newGroups, name)
 
+	// Copy existing attributes
+	newAttrs := slices.Clone(c.attrs)
+
 	// Create a new collector that shares the same record store
 	return &LogCollector{
 		store:   c.store,
 		handler: newHandler,
 		groups:  newGroups,
+		attrs:   newAttrs,
 	}
 }
 
@@ -131,8 +146,9 @@ func (c *LogCollector) PlayLogs(handler slog.Handler) error {
 		return nil
 	}
 	for _, stored := range c.store.GetAll() {
-		// Apply groups from the stored record
 		currentHandler := handler
+
+		// Apply groups from the stored records
 		for _, group := range stored.Groups {
 			currentHandler = currentHandler.WithGroup(group)
 		}
@@ -143,6 +159,7 @@ func (c *LogCollector) PlayLogs(handler slog.Handler) error {
 			r.AddAttrs(attr)
 		}
 
+		// Forward to the new handler from this function's input
 		if err := currentHandler.Handle(context.Background(), r); err != nil {
 			return err
 		}

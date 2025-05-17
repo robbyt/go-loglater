@@ -16,8 +16,8 @@ func demoGroupLogging(w io.Writer) (*loglater.LogCollector, error) {
 	logger := slog.New(collector)
 
 	// Create loggers with different groups
-	dbLogger := logger.WithGroup("db").With("component", "database")
-	apiLogger := logger.WithGroup("api").With("component", "http")
+	dbLogger := logger.WithGroup("db").With("example", 1)
+	apiLogger := logger.WithGroup("api").With("example", 1)
 
 	// Log with the different loggers
 	logger.Info("Service started", "version", "2.1.0")
@@ -56,9 +56,9 @@ func main() {
 	collector = loglater.NewLogCollector(nil)
 	logger := slog.New(collector)
 
-	// Create loggers with groups
-	dbLogger := logger.WithGroup("db")
-	apiLogger := logger.WithGroup("api")
+	// Create loggers with groups and attributes
+	dbLogger := logger.WithGroup("db").With("example", 1)
+	apiLogger := logger.WithGroup("api").With("example", 1)
 
 	// Log with different loggers (nothing output yet)
 	dbLogger.Info("Connected to database", "host", "db.example.com")

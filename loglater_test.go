@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -457,6 +458,121 @@ func TestComplexScenarios(t *testing.T) {
 	})
 }
 
+// parseLogLine breaks a log line into fields
+func parseLogLine(t *testing.T, line string) map[string]string {
+	t.Helper()
+
+	result := make(map[string]string)
+
+	// Split by space, but respect quoted values
+	var fields []string
+	var currentField strings.Builder
+	inQuote := false
+
+	for _, r := range line {
+		if r == '"' {
+			inQuote = !inQuote
+			currentField.WriteRune(r)
+		} else if r == ' ' && !inQuote {
+			if currentField.Len() > 0 {
+				fields = append(fields, currentField.String())
+				currentField.Reset()
+			}
+		} else {
+			currentField.WriteRune(r)
+		}
+	}
+
+	// Add the last field if any
+	if currentField.Len() > 0 {
+		fields = append(fields, currentField.String())
+	}
+
+	// Parse each field into key=value pairs
+	for _, field := range fields {
+		if idx := strings.Index(field, "="); idx >= 0 {
+			key := field[:idx]
+			value := field[idx+1:]
+			result[key] = value
+		}
+	}
+
+	return result
+}
+
+// parseLogOutput parses multiple log lines into a map using timestamp as key
+func parseLogOutput(t *testing.T, output string) map[string]map[string]string {
+	t.Helper()
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	result := make(map[string]map[string]string)
+
+	for _, line := range lines {
+		fields := parseLogLine(t, line)
+		if timestamp, ok := fields["time"]; ok {
+			result[timestamp] = fields
+		}
+	}
+
+	return result
+}
+
+// compareLogFields compares fields between original and replayed logs
+func compareLogFields(t *testing.T, timestamp string, origFields, replayFields map[string]string) {
+	t.Helper()
+
+	// Compare fields in each log entry
+	// First check for fields that start with a group prefix, which is our focus
+	var origGroupFields, replayGroupFields []string
+
+	for field := range origFields {
+		// Look for fields that would be prefixed with group names
+		parts := strings.Split(field, ".")
+		if len(parts) > 1 {
+			origGroupFields = append(origGroupFields, field)
+		}
+	}
+
+	for field := range replayFields {
+		parts := strings.Split(field, ".")
+		if len(parts) > 1 {
+			replayGroupFields = append(replayGroupFields, field)
+		}
+	}
+
+	// Sort for reliable comparison
+	sort.Strings(origGroupFields)
+	sort.Strings(replayGroupFields)
+
+	// Check for missing group fields in replay
+	for _, field := range origGroupFields {
+		if _, exists := replayFields[field]; !exists {
+			t.Errorf("Field %q present in original but missing in replay for timestamp %s",
+				field, timestamp)
+		}
+	}
+
+	// Report different number of group fields
+	if len(origGroupFields) != len(replayGroupFields) {
+		t.Errorf("Different number of group fields for timestamp %s: original=%d, replayed=%d",
+			timestamp, len(origGroupFields), len(replayGroupFields))
+
+		// Show the differences
+		t.Logf("Original group fields: %v", origGroupFields)
+		t.Logf("Replayed group fields: %v", replayGroupFields)
+	}
+
+	// Also compare all field values
+	for field, origValue := range origFields {
+		if replayValue, ok := replayFields[field]; ok {
+			if origValue != replayValue {
+				t.Errorf("Field %q has different values for timestamp %s: original=%q, replayed=%q",
+					field, timestamp, origValue, replayValue)
+			}
+		}
+	}
+}
+
 func TestGroupPreservation(t *testing.T) {
 	// Create a buffer to capture output
 	var buf bytes.Buffer
@@ -511,5 +627,67 @@ func TestGroupPreservation(t *testing.T) {
 	// This test should fail initially since we haven't implemented group handling yet
 	if _, ok := result["testgroup"]; !ok {
 		t.Errorf("Expected 'testgroup' in output JSON, but it wasn't found")
+	}
+}
+
+func TestWithGroupAndAttributes(t *testing.T) {
+	// Create buffers to capture output
+	var origBuf, replayBuf bytes.Buffer
+
+	// Create a collector with a text handler for direct output
+	textHandler := slog.NewTextHandler(&origBuf, nil)
+	collector := NewLogCollector(textHandler)
+	logger := slog.New(collector)
+
+	// Create different types of loggers with groups and attributes
+	baseLogger := logger.With("global", "value")
+	groupLogger := baseLogger.WithGroup("group1")
+	groupWithAttrLogger := groupLogger.With("attribute", "value")
+	nestedGroupLogger := logger.WithGroup("parent").WithGroup("child")
+	multiAttrLogger := logger.WithGroup("multi").With("attr1", "value1", "attr2", "value2")
+
+	// Log messages with different loggers
+	baseLogger.Info("Base log")
+	groupLogger.Info("Group log", "field1", "value1")
+	groupWithAttrLogger.Error("Group with attr log", "field2", "value2")
+	nestedGroupLogger.Warn("Nested group log", "nested", "value")
+	multiAttrLogger.Info("Multiple attrs", "extra", "value")
+
+	// Get all original output lines
+	origOutput := origBuf.String()
+	t.Logf("Original output:\n%s", origOutput)
+
+	// Parse original output
+	origLogs := parseLogOutput(t, origOutput)
+
+	// Now replay the logs to a new text handler
+	replayHandler := slog.NewTextHandler(&replayBuf, nil)
+	if err := collector.PlayLogs(replayHandler); err != nil {
+		t.Fatalf("Failed to replay logs: %v", err)
+	}
+
+	// Get all replayed output lines
+	replayOutput := replayBuf.String()
+	t.Logf("Replayed output:\n%s", replayOutput)
+
+	// Parse replayed output
+	replayLogs := parseLogOutput(t, replayOutput)
+
+	// Verify we have the same number of log lines
+	if len(origLogs) != len(replayLogs) {
+		t.Errorf("Different number of log lines: original=%d, replayed=%d",
+			len(origLogs), len(replayLogs))
+	}
+
+	// Compare each log entry by timestamp
+	for timestamp, origFields := range origLogs {
+		replayFields, found := replayLogs[timestamp]
+		if !found {
+			t.Errorf("Log entry with timestamp %s missing in replay", timestamp)
+			continue
+		}
+
+		// Compare the fields for this log entry
+		compareLogFields(t, timestamp, origFields, replayFields)
 	}
 }
