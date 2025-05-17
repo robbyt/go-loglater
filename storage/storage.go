@@ -8,14 +8,8 @@ import (
 	"time"
 )
 
-// Storage is an interface for a storage backend
-type Storage interface {
-	Append(record *Record)
-	GetAll() []Record
-}
-
-// RecordStorage holds the shared log records
-type RecordStorage struct {
+// MemStorage holds the log records in memory, and implements the Storage interface.
+type MemStorage struct {
 	mu                  sync.RWMutex
 	records             []Record
 	cleanupFunc         CleanupFunc
@@ -27,9 +21,9 @@ type RecordStorage struct {
 	asyncCleanupRunning atomic.Bool
 }
 
-// NewRecordStorage creates a new RecordStorage instance
-func NewRecordStorage(opts ...Option) *RecordStorage {
-	rs := &RecordStorage{
+// NewRecordStorage creates a new MemStorage instance.
+func NewRecordStorage(opts ...Option) *MemStorage {
+	rs := &MemStorage{
 		records:         make([]Record, 0, 10), // Default preallocation size of 10
 		cleanupCh:       make(chan struct{}, 1),
 		ctx:             context.Background(),
@@ -49,8 +43,8 @@ func NewRecordStorage(opts ...Option) *RecordStorage {
 	return rs
 }
 
-// StartCleanupWorker handles async cleanup operations in a go routine
-func (s *RecordStorage) StartCleanupWorker() {
+// StartCleanupWorker handles async cleanup operations in a go routine.
+func (s *MemStorage) StartCleanupWorker() {
 	if !s.asyncCleanupRunning.CompareAndSwap(false, true) {
 		// Already running, exit
 		return
@@ -88,8 +82,8 @@ func (s *RecordStorage) StartCleanupWorker() {
 	}
 }
 
-// performCleanup executes the cleanup function if set
-func (s *RecordStorage) performCleanup() {
+// performCleanup executes the cleanup function if set.
+func (s *MemStorage) performCleanup() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -98,8 +92,8 @@ func (s *RecordStorage) performCleanup() {
 	}
 }
 
-// triggerCleanup triggers a cleanup operation
-func (s *RecordStorage) triggerCleanup() {
+// triggerCleanup triggers a cleanup operation.
+func (s *MemStorage) triggerCleanup() {
 	if !s.asyncCleanupEnabled {
 		s.performCleanup()
 		return
@@ -113,8 +107,8 @@ func (s *RecordStorage) triggerCleanup() {
 	}
 }
 
-// Append adds a record to the storage
-func (s *RecordStorage) Append(record *Record) {
+// Append adds a record to the storage.
+func (s *MemStorage) Append(record *Record) {
 	s.mu.Lock()
 	s.records = append(s.records, *record)
 	s.mu.Unlock()
@@ -125,8 +119,8 @@ func (s *RecordStorage) Append(record *Record) {
 	}
 }
 
-// GetAll returns a copy of all records
-func (s *RecordStorage) GetAll() []Record {
+// GetAll returns a copy of all records.
+func (s *MemStorage) GetAll() []Record {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return slices.Clone(s.records)
