@@ -133,11 +133,10 @@ store := storage.NewRecordStorage(
     storage.WithAsyncCleanup(true)
 )
 collector := loglater.NewLogCollector(nil, loglater.WithStorage(store))
-
-// Cancel the context when you want to stop the worker
+// Cancel the context to stop async cleanup (forever)
 cancel()
 
-// With custom cleanup function
+// With a custom cleanup function
 customCleanup := func(records []storage.Record) []storage.Record {
     // Keep only error logs
     var result []storage.Record
@@ -150,15 +149,6 @@ customCleanup := func(records []storage.Record) []storage.Record {
 }
 
 store := storage.NewRecordStorage(storage.WithCleanupFunc(customCleanup))
-collector := loglater.NewLogCollector(nil, loglater.WithStorage(store))
-
-// Combining multiple options
-store := storage.NewRecordStorage(
-    storage.WithMaxSize(1000),
-    storage.WithMaxAge(24 * time.Hour),
-    storage.WithAsyncCleanup(true),
-    storage.WithPreallocation(500), // Pre-allocate capacity for better performance
-)
 collector := loglater.NewLogCollector(nil, loglater.WithStorage(store))
 ```
 
