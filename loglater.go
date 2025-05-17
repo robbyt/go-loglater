@@ -58,14 +58,11 @@ func (c *LogCollector) Handle(ctx context.Context, r slog.Record) error {
 		return errors.New("failed to create record")
 	}
 
-	// Add the collector's attributes to the stored record
+	// Add the collector's attributes to the stored record, added via WithAttrs()
 	if len(c.attrs) > 0 {
-		// Add the collector's attributes to the stored record
-		// These are attributes added via WithAttrs()
 		storedRecord.Attrs = append(storedRecord.Attrs, c.attrs...)
 	}
 
-	// Store the record in the shared store
 	if c.store != nil {
 		c.store.Append(storedRecord)
 	}
@@ -149,10 +146,9 @@ func (c *LogCollector) PlayLogs(handler slog.Handler) error {
 		return nil
 	}
 	for _, stored := range c.store.GetAll() {
-		// Start with the base handler
 		currentHandler := handler
 
-		// Apply groups from the stored record
+		// Apply groups from the stored records
 		for _, group := range stored.Groups {
 			currentHandler = currentHandler.WithGroup(group)
 		}
@@ -163,6 +159,7 @@ func (c *LogCollector) PlayLogs(handler slog.Handler) error {
 			r.AddAttrs(attr)
 		}
 
+		// Forward to the new handler from this function's input
 		if err := currentHandler.Handle(context.Background(), r); err != nil {
 			return err
 		}
