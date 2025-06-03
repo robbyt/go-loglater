@@ -1,3 +1,38 @@
+// Package loglater provides a slog.Handler implementation that captures structured logs
+// for later replay, enabling powerful testing and debugging capabilities.
+//
+// Why This Package Exists:
+//
+// Testing code that uses structured logging is challenging. You want to verify that
+// your code logs the right messages with the right attributes, but you also want
+// those logs to be available for debugging when tests fail. This package solves
+// both needs by capturing logs during execution and allowing you to replay them
+// to any slog.Handler later.
+//
+// The Temporal Ordering Challenge:
+//
+// A subtle but critical challenge in log replay is preserving the exact relationship
+// between attributes and groups. Consider this logger:
+//
+//	logger.With("global", "value").WithGroup("api").With("user", "123")
+//
+// When replaying, "global" must remain a top-level attribute while "user" must be
+// grouped under "api". The naive approach of storing attributes and groups separately
+// fails because it loses the temporal ordering of operations.
+//
+// Our Solution - Operation Sequences:
+//
+// We record every WithAttrs() and WithGroup() call as an ordered sequence of operations.
+// During replay, we execute these operations in the exact same order, reconstructing
+// the precise handler state that existed when the log was created. This ensures that
+// attributes added before groups remain global, while attributes added after groups
+// are properly nested.
+//
+// Usage:
+//
+// GetLogs() returns fully realized log records with all attributes and groups applied,
+// exactly as they would appear during replay. This includes both the log message's own
+// attributes and any attributes added via WithAttrs(), with proper group nesting.
 package loglater
 
 import (
@@ -27,19 +62,17 @@ type Storage interface {
 
 // LogCollector collects log records and can replay them later
 type LogCollector struct {
-	store   Storage
-	handler slog.Handler
-	groups  []string
-	attrs   []slog.Attr
+	store    Storage
+	handler  slog.Handler
+	sequence storage.HandlerSequence
 }
 
 // NewLogCollector creates a new log collector with an underlying handler and optional configuration
 func NewLogCollector(baseHandler slog.Handler, opts ...Option) *LogCollector {
 	lc := &LogCollector{
-		store:   storage.NewRecordStorage(),
-		handler: baseHandler,
-		groups:  make([]string, 0),
-		attrs:   make([]slog.Attr, 0),
+		store:    storage.NewRecordStorage(),
+		handler:  baseHandler,
+		sequence: make(storage.HandlerSequence, 0),
 	}
 
 	// Apply all options
@@ -52,15 +85,10 @@ func NewLogCollector(baseHandler slog.Handler, opts ...Option) *LogCollector {
 
 // Handle implements slog.Handler.Handle
 func (c *LogCollector) Handle(ctx context.Context, r slog.Record) error {
-	g := slices.Clone(c.groups)
-	storedRecord := storage.NewRecord(ctx, g, &r)
+	seq := slices.Clone(c.sequence)
+	storedRecord := storage.NewRecord(ctx, seq, &r)
 	if storedRecord == nil {
 		return errors.New("failed to create record")
-	}
-
-	// Add the collector's attributes to the stored record, added via WithAttrs()
-	if len(c.attrs) > 0 {
-		storedRecord.Attrs = append(storedRecord.Attrs, c.attrs...)
 	}
 
 	if c.store != nil {
@@ -95,19 +123,20 @@ func (c *LogCollector) WithAttrs(attrs []slog.Attr) slog.Handler {
 		newHandler = c.handler.WithAttrs(attrs)
 	}
 
-	// Create a deep copy of the groups and attrs slices
-	groupsCopy := slices.Clone(c.groups)
-	attrsCopy := slices.Clone(c.attrs)
+	// Clone sequence to avoid mutation between handler instances
+	sequenceCopy := slices.Clone(c.sequence)
 
-	// Append the new attributes
-	attrsCopy = append(attrsCopy, attrs...)
+	// Add the WithAttrs operation to the sequence
+	sequenceCopy = append(sequenceCopy, storage.Operation{
+		Type:  "attrs",
+		Attrs: attrs,
+	})
 
 	// Create a new collector that shares the same record store
 	return &LogCollector{
-		store:   c.store,
-		handler: newHandler,
-		groups:  groupsCopy,
-		attrs:   attrsCopy,
+		store:    c.store,
+		handler:  newHandler,
+		sequence: sequenceCopy,
 	}
 }
 
@@ -124,19 +153,20 @@ func (c *LogCollector) WithGroup(name string) slog.Handler {
 		newHandler = c.handler.WithGroup(name)
 	}
 
-	// Copy existing groups and append the new group
-	newGroups := slices.Clone(c.groups)
-	newGroups = append(newGroups, name)
+	// Clone sequence to avoid mutation between handler instances
+	sequenceCopy := slices.Clone(c.sequence)
 
-	// Copy existing attributes
-	newAttrs := slices.Clone(c.attrs)
+	// Add the WithGroup operation to the sequence
+	sequenceCopy = append(sequenceCopy, storage.Operation{
+		Type:  "group",
+		Group: name,
+	})
 
 	// Create a new collector that shares the same record store
 	return &LogCollector{
-		store:   c.store,
-		handler: newHandler,
-		groups:  newGroups,
-		attrs:   newAttrs,
+		store:    c.store,
+		handler:  newHandler,
+		sequence: sequenceCopy,
 	}
 }
 
@@ -161,9 +191,14 @@ func (c *LogCollector) PlayLogsCtx(ctx context.Context, handler slog.Handler) er
 
 		currentHandler := handler
 
-		// Apply groups from the stored records
-		for _, group := range stored.Groups {
-			currentHandler = currentHandler.WithGroup(group)
+		// Replay the exact sequence of WithAttrs/WithGroup operations
+		for _, op := range stored.Sequence {
+			switch op.Type {
+			case "attrs":
+				currentHandler = currentHandler.WithAttrs(op.Attrs)
+			case "group":
+				currentHandler = currentHandler.WithGroup(op.Group)
+			}
 		}
 
 		// Create a new record from the stored data, preserving the original PC
@@ -185,10 +220,21 @@ func (c *LogCollector) PlayLogs(handler slog.Handler) error {
 	return c.PlayLogsCtx(context.Background(), handler)
 }
 
-// GetLogs returns a copy of the collected logs
+// GetLogs returns a copy of the collected logs with all attributes and groups applied.
+// Each returned record contains the complete set of attributes that would be present
+// during replay, including attributes from WithAttrs calls and proper group nesting.
 func (c *LogCollector) GetLogs() []storage.Record {
 	if c.store == nil {
 		return nil
 	}
-	return c.store.GetAll()
+
+	// Get raw records and realize them for the user
+	rawRecords := c.store.GetAll()
+	realizedRecords := make([]storage.Record, len(rawRecords))
+
+	for i, record := range rawRecords {
+		realizedRecords[i] = record.Realize()
+	}
+
+	return realizedRecords
 }

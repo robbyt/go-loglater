@@ -353,7 +353,6 @@ func TestEdgeCases(t *testing.T) {
 		collector := &LogCollector{
 			store:   nil,
 			handler: nil,
-			groups:  []string{},
 		}
 
 		// Should return nil without panicking
@@ -469,7 +468,6 @@ func TestEdgeCases(t *testing.T) {
 		collector := &LogCollector{
 			store:   nil,
 			handler: nil,
-			groups:  []string{},
 		}
 
 		// Should return nil

@@ -25,7 +25,6 @@ func setupTestStorage(tb testing.TB, size int, opts ...Option) (*MemStorage, []*
 			Level:   slog.LevelInfo,
 			Message: "test message",
 			Attrs:   []slog.Attr{slog.Int("index", i)},
-			Groups:  nil,
 		}
 		storage.Append(records[i])
 	}

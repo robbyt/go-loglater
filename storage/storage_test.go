@@ -31,7 +31,6 @@ func BenchmarkRecordStorage_Append(b *testing.B) {
 						Level:   0,
 						Message: "test",
 						Attrs:   nil,
-						Groups:  nil,
 					}
 				}
 
@@ -65,7 +64,6 @@ func BenchmarkRecordStorage_Append(b *testing.B) {
 					Level:   0,
 					Message: "test",
 					Attrs:   nil,
-					Groups:  nil,
 				}
 				b.ResetTimer()
 				for b.Loop() {
@@ -102,7 +100,6 @@ func BenchmarkRecordStorage_GetAll(b *testing.B) {
 			Level:   0,
 			Message: "test",
 			Attrs:   nil,
-			Groups:  nil,
 		}
 
 		for _, tc := range cases {
@@ -139,7 +136,6 @@ func BenchmarkRecordStorage_GetAll(b *testing.B) {
 			Level:   0,
 			Message: "test",
 			Attrs:   nil,
-			Groups:  nil,
 		}
 
 		for _, tc := range cases {
@@ -188,7 +184,6 @@ func TestRecordStorage(t *testing.T) {
 			Level:   slog.LevelInfo,
 			Message: "test message 1",
 			Attrs:   []slog.Attr{slog.String("key", "value")},
-			Groups:  []string{"group1"},
 		}
 
 		record2 := &Record{
@@ -196,7 +191,6 @@ func TestRecordStorage(t *testing.T) {
 			Level:   slog.LevelError,
 			Message: "test message 2",
 			Attrs:   []slog.Attr{slog.Int("count", 42)},
-			Groups:  []string{"group1", "group2"},
 		}
 
 		// Append records
@@ -243,7 +237,6 @@ func TestRecordStorage(t *testing.T) {
 				slog.Int("int", 42),
 				slog.Bool("bool", true),
 			},
-			Groups: []string{"group1"},
 		}
 
 		// Verify attributes
@@ -251,10 +244,6 @@ func TestRecordStorage(t *testing.T) {
 			t.Errorf("Expected 3 attributes, got %d", len(record.Attrs))
 		}
 
-		// Verify groups
-		if len(record.Groups) != 1 || record.Groups[0] != "group1" {
-			t.Errorf("Groups not correctly stored: %v", record.Groups)
-		}
 	})
 
 	t.Run("NewRecord", func(t *testing.T) {
@@ -265,11 +254,8 @@ func TestRecordStorage(t *testing.T) {
 			slog.Int("key2", 42),
 		)
 
-		// Create groups
-		groups := []string{"group1", "group2"}
-
 		// Create a new Record
-		record := NewRecord(context.Background(), groups, &r)
+		record := NewRecord(context.Background(), nil, &r)
 
 		// Verify basic fields
 		if record.Message != "test message" {
@@ -285,13 +271,5 @@ func TestRecordStorage(t *testing.T) {
 			t.Errorf("Expected 2 attributes, got %d", len(record.Attrs))
 		}
 
-		// Verify groups
-		if len(record.Groups) != 2 {
-			t.Errorf("Expected 2 groups, got %d", len(record.Groups))
-		}
-
-		if record.Groups[0] != "group1" || record.Groups[1] != "group2" {
-			t.Errorf("Groups not correctly stored: %v", record.Groups)
-		}
 	})
 }

@@ -21,11 +21,8 @@ func TestNewRecord(t *testing.T) {
 			slog.Bool("key3", true),
 		)
 
-		// Create groups
-		groups := []string{"group1", "group2"}
-
 		// Create a storage.Record
-		record := NewRecord(context.Background(), groups, &slogRecord)
+		record := NewRecord(context.Background(), nil, &slogRecord)
 
 		// Basic validation
 		if record == nil {
@@ -43,11 +40,6 @@ func TestNewRecord(t *testing.T) {
 
 		if record.Message != "test message" {
 			t.Errorf("Expected message 'test message', got %q", record.Message)
-		}
-
-		// Validate groups
-		if !reflect.DeepEqual(record.Groups, groups) {
-			t.Errorf("Expected groups %v, got %v", groups, record.Groups)
 		}
 
 		// Validate all attributes were copied
@@ -90,7 +82,7 @@ func TestNewRecord(t *testing.T) {
 
 	t.Run("Nil record input", func(t *testing.T) {
 		// Test with nil slog.Record
-		record := NewRecord(context.Background(), []string{"group"}, nil)
+		record := NewRecord(context.Background(), nil, nil)
 		if record != nil {
 			t.Error("Expected nil record when input is nil")
 		}
@@ -105,10 +97,6 @@ func TestNewRecord(t *testing.T) {
 			t.Fatal("Expected non-nil record")
 		}
 
-		// Verify groups is nil or empty
-		if len(record.Groups) != 0 {
-			t.Errorf("Expected empty groups, got %v", record.Groups)
-		}
 	})
 
 	t.Run("No attributes", func(t *testing.T) {
