@@ -11,6 +11,7 @@ type Record struct {
 	Time    time.Time
 	Level   slog.Level
 	Message string
+	PC      uintptr // Program counter for call site information
 	Attrs   []slog.Attr
 	Groups  []string
 }
@@ -25,6 +26,7 @@ func NewRecord(_ context.Context, groups []string, r *slog.Record) *Record {
 		Time:    r.Time,
 		Level:   r.Level,
 		Message: r.Message,
+		PC:      r.PC, // Preserve program counter for call site information
 		Attrs:   make([]slog.Attr, 0, r.NumAttrs()),
 		Groups:  groups,
 	}
