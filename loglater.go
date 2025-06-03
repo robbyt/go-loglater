@@ -40,17 +40,17 @@ type Storage interface {
 
 // LogCollector collects log records and can replay them later
 type LogCollector struct {
-	store    Storage
-	handler  slog.Handler
-	sequence storage.OperationJournal
+	store   Storage
+	handler slog.Handler
+	journal storage.OperationJournal
 }
 
 // NewLogCollector creates a new log collector with an underlying handler and optional configuration
 func NewLogCollector(baseHandler slog.Handler, opts ...Option) *LogCollector {
 	lc := &LogCollector{
-		store:    storage.NewRecordStorage(),
-		handler:  baseHandler,
-		sequence: make(storage.OperationJournal, 0),
+		store:   storage.NewRecordStorage(),
+		handler: baseHandler,
+		journal: make(storage.OperationJournal, 0),
 	}
 
 	// Apply all options
@@ -63,7 +63,7 @@ func NewLogCollector(baseHandler slog.Handler, opts ...Option) *LogCollector {
 
 // Handle implements slog.Handler.Handle
 func (c *LogCollector) Handle(ctx context.Context, r slog.Record) error {
-	seq := slices.Clone(c.sequence)
+	seq := slices.Clone(c.journal)
 	storedRecord := storage.NewRecord(ctx, seq, &r)
 	if storedRecord == nil {
 		return errors.New("failed to create record")
@@ -99,20 +99,20 @@ func (c *LogCollector) WithAttrs(attrs []slog.Attr) slog.Handler {
 		newHandler = c.handler.WithAttrs(attrs)
 	}
 
-	// Clone sequence to avoid mutation between handler instances
-	sequenceCopy := slices.Clone(c.sequence)
+	// Clone the journal to avoid mutation between handler instances
+	journalCopy := slices.Clone(c.journal)
 
-	// Add the WithAttrs operation to the sequence
-	sequenceCopy = append(sequenceCopy, storage.Operation{
+	// Add the WithAttrs operation to the journal
+	journalCopy = append(journalCopy, storage.Operation{
 		Type:  "attrs",
 		Attrs: attrs,
 	})
 
 	// Create a new collector that shares the same record store
 	return &LogCollector{
-		store:    c.store,
-		handler:  newHandler,
-		sequence: sequenceCopy,
+		store:   c.store,
+		handler: newHandler,
+		journal: journalCopy,
 	}
 }
 
@@ -129,20 +129,20 @@ func (c *LogCollector) WithGroup(name string) slog.Handler {
 		newHandler = c.handler.WithGroup(name)
 	}
 
-	// Clone sequence to avoid mutation between handler instances
-	sequenceCopy := slices.Clone(c.sequence)
+	// Clone the journal to avoid mutation between handler instances
+	journalCopy := slices.Clone(c.journal)
 
-	// Add the WithGroup operation to the sequence
-	sequenceCopy = append(sequenceCopy, storage.Operation{
+	// Add the WithGroup operation to the journal
+	journalCopy = append(journalCopy, storage.Operation{
 		Type:  "group",
 		Group: name,
 	})
 
 	// Create a new collector that shares the same record store
 	return &LogCollector{
-		store:    c.store,
-		handler:  newHandler,
-		sequence: sequenceCopy,
+		store:   c.store,
+		handler: newHandler,
+		journal: journalCopy,
 	}
 }
 
@@ -163,8 +163,8 @@ func (c *LogCollector) PlayLogsCtx(ctx context.Context, handler slog.Handler) er
 
 		currentHandler := handler
 
-		// Replay the exact sequence of WithAttrs/WithGroup operations
-		for _, op := range stored.Sequence {
+		// Replay the exact journal of WithAttrs/WithGroup operations
+		for _, op := range stored.Journal {
 			switch op.Type {
 			case "attrs":
 				currentHandler = currentHandler.WithAttrs(op.Attrs)

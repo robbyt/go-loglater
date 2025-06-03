@@ -442,7 +442,7 @@ func TestStorageBehavior(t *testing.T) {
 			Level:   slog.LevelInfo,
 			Message: "test",
 			Attrs:   []slog.Attr{slog.String("msg_attr", "value")},
-			Sequence: storage.OperationJournal{
+			Journal: storage.OperationJournal{
 				{Type: "attrs", Attrs: []slog.Attr{slog.String("global", "value")}},
 				{Type: "group", Group: "g1"},
 				{Type: "attrs", Attrs: []slog.Attr{slog.String("grouped", "value")}},
@@ -464,8 +464,8 @@ func TestStorageBehavior(t *testing.T) {
 			t.Errorf("Expected msg_attr in raw record, got %s", records[0].Attrs[0].Key)
 		}
 
-		if len(records[0].Sequence) != 3 {
-			t.Errorf("Expected sequence of 3 operations, got %d", len(records[0].Sequence))
+		if len(records[0].Journal) != 3 {
+			t.Errorf("Expected journal of 3 operations, got %d", len(records[0].Journal))
 		}
 	})
 
@@ -475,7 +475,7 @@ func TestStorageBehavior(t *testing.T) {
 			Level:   slog.LevelInfo,
 			Message: "test",
 			Attrs:   []slog.Attr{slog.String("msg", "value")},
-			Sequence: storage.OperationJournal{
+			Journal: storage.OperationJournal{
 				{Type: "attrs", Attrs: []slog.Attr{slog.String("global", "value")}},
 				{Type: "group", Group: "g1"},
 				{Type: "attrs", Attrs: []slog.Attr{slog.String("grouped", "value")}},

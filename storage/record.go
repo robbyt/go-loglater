@@ -8,30 +8,30 @@ import (
 
 // Record represents a log Record that can be stored, somewhere.
 type Record struct {
-	Time     time.Time
-	Level    slog.Level
-	Message  string
-	PC       uintptr // Program counter for call site information
-	Attrs    []slog.Attr
-	Sequence OperationJournal // Sequence of handler operations for accurate replay
+	Time    time.Time
+	Level   slog.Level
+	Message string
+	PC      uintptr // Program counter for call site information
+	Attrs   []slog.Attr
+	Journal OperationJournal // journal of handler operations for replay
 }
 
-// NewRecord creates a new Record from a slog.Record and handler sequence.
+// NewRecord creates a new Record from a slog.Record and journal.
 //
-// The sequence parameter captures the exact order of WithAttrs() and WithGroup() operations
+// The journal parameter captures the exact order of WithAttrs() and WithGroup() operations
 // that were used to create the logger instance that generated this log record.
-func NewRecord(_ context.Context, sequence OperationJournal, r *slog.Record) *Record {
+func NewRecord(_ context.Context, journal OperationJournal, r *slog.Record) *Record {
 	if r == nil {
 		return nil
 	}
 
 	record := &Record{
-		Time:     r.Time,
-		Level:    r.Level,
-		Message:  r.Message,
-		PC:       r.PC, // Preserve program counter for call site information
-		Attrs:    make([]slog.Attr, 0, r.NumAttrs()),
-		Sequence: sequence,
+		Time:    r.Time,
+		Level:   r.Level,
+		Message: r.Message,
+		PC:      r.PC, // Preserve program counter for call site information
+		Attrs:   make([]slog.Attr, 0, r.NumAttrs()),
+		Journal: journal,
 	}
 
 	// Extract attributes
@@ -43,22 +43,22 @@ func NewRecord(_ context.Context, sequence OperationJournal, r *slog.Record) *Re
 	return record
 }
 
-// Realize returns a new Record with all attributes from the sequence applied.
+// Realize returns a new Record with all attributes from the journal applied.
 func (r *Record) Realize() Record {
 	result := Record{
-		Time:     r.Time,
-		Level:    r.Level,
-		Message:  r.Message,
-		PC:       r.PC,
-		Attrs:    make([]slog.Attr, 0),
-		Sequence: r.Sequence,
+		Time:    r.Time,
+		Level:   r.Level,
+		Message: r.Message,
+		PC:      r.PC,
+		Attrs:   make([]slog.Attr, 0),
+		Journal: r.Journal,
 	}
 
-	// Apply the sequence to build complete attributes
+	// Apply the journal to build the attributes
 	var currentGroups []string
 	var collectorAttrs []slog.Attr
 
-	for _, op := range r.Sequence {
+	for _, op := range r.Journal {
 		switch op.Type {
 		case "attrs":
 			if len(currentGroups) > 0 {

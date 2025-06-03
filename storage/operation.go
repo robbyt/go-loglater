@@ -6,7 +6,7 @@ import "log/slog"
 // This captures either a WithAttrs() or WithGroup() call made on a slog.Handler,
 // preserving the exact order of operations for accurate replay.
 //
-// Example sequence for: logger.With("global", "value").WithGroup("api").With("user", "123")
+// Example Journal for: logger.With("global", "value").WithGroup("api").With("user", "123")
 //  1. Operation{Type: "attrs", Attrs: [global=value]}
 //  2. Operation{Type: "group", Group: "api"}
 //  3. Operation{Type: "attrs", Attrs: [user=123]}
@@ -18,10 +18,10 @@ type Operation struct {
 	Group string      // for WithGroup operations
 }
 
-// OperationJournal represents the sequence of WithAttrs and WithGroup operations
+// OperationJournal represents the journal of WithAttrs and WithGroup operations
 // that were applied to create a particular logger instance.
 //
-// This sequence is stored alongside each log record and replayed during log output
+// This journal is stored alongside each log record and replayed during log output
 // to ensure the exact same handler state is reconstructed, preserving the correct
 // relationship between global attributes (added before groups) and grouped attributes
 // (added after groups).

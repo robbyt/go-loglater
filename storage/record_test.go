@@ -167,33 +167,33 @@ func TestNewRecord(t *testing.T) {
 		}
 	})
 
-	t.Run("Sequence preservation", func(t *testing.T) {
-		sequence := OperationJournal{
+	t.Run("Journal preservation", func(t *testing.T) {
+		journal := OperationJournal{
 			{Type: "attrs", Attrs: []slog.Attr{slog.String("global", "value")}},
 			{Type: "group", Group: "api"},
 		}
 
-		slogRecord := slog.NewRecord(fixedTime, slog.LevelInfo, "sequence test", 0)
-		record := NewRecord(context.Background(), sequence, &slogRecord)
+		slogRecord := slog.NewRecord(fixedTime, slog.LevelInfo, "journal test", 0)
+		record := NewRecord(context.Background(), journal, &slogRecord)
 
 		if record == nil {
 			t.Fatal("Expected non-nil record")
 		}
 
-		if len(record.Sequence) != 2 {
-			t.Errorf("Expected sequence length 2, got %d", len(record.Sequence))
+		if len(record.Journal) != 2 {
+			t.Errorf("Expected journal length 2, got %d", len(record.Journal))
 		}
 
-		if record.Sequence[0].Type != "attrs" {
-			t.Errorf("Expected first operation type 'attrs', got %q", record.Sequence[0].Type)
+		if record.Journal[0].Type != "attrs" {
+			t.Errorf("Expected first operation type 'attrs', got %q", record.Journal[0].Type)
 		}
 
-		if record.Sequence[1].Type != "group" {
-			t.Errorf("Expected second operation type 'group', got %q", record.Sequence[1].Type)
+		if record.Journal[1].Type != "group" {
+			t.Errorf("Expected second operation type 'group', got %q", record.Journal[1].Type)
 		}
 
-		if record.Sequence[1].Group != "api" {
-			t.Errorf("Expected group name 'api', got %q", record.Sequence[1].Group)
+		if record.Journal[1].Group != "api" {
+			t.Errorf("Expected group name 'api', got %q", record.Journal[1].Group)
 		}
 	})
 }
@@ -201,14 +201,14 @@ func TestNewRecord(t *testing.T) {
 func TestRecordRealize(t *testing.T) {
 	fixedTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	t.Run("AppliesSequenceCorrectly", func(t *testing.T) {
+	t.Run("AppliesJournalCorrectly", func(t *testing.T) {
 		record := Record{
 			Time:    fixedTime,
 			Level:   slog.LevelInfo,
 			Message: "test",
 			PC:      123,
 			Attrs:   []slog.Attr{slog.String("msg", "value")},
-			Sequence: OperationJournal{
+			Journal: OperationJournal{
 				{Type: "attrs", Attrs: []slog.Attr{slog.String("global", "value")}},
 				{Type: "group", Group: "api"},
 				{Type: "attrs", Attrs: []slog.Attr{slog.String("user", "123")}},
@@ -239,13 +239,13 @@ func TestRecordRealize(t *testing.T) {
 		}
 	})
 
-	t.Run("HandlesEmptySequence", func(t *testing.T) {
+	t.Run("HandlesEmptyJournal", func(t *testing.T) {
 		record := Record{
-			Time:     fixedTime,
-			Level:    slog.LevelInfo,
-			Message:  "test",
-			Attrs:    []slog.Attr{slog.String("key", "value")},
-			Sequence: OperationJournal{},
+			Time:    fixedTime,
+			Level:   slog.LevelInfo,
+			Message: "test",
+			Attrs:   []slog.Attr{slog.String("key", "value")},
+			Journal: OperationJournal{},
 		}
 
 		realized := record.Realize()
@@ -266,7 +266,7 @@ func TestRecordRealize(t *testing.T) {
 			Message: "original message",
 			PC:      123,
 			Attrs:   []slog.Attr{slog.String("original", "attr")},
-			Sequence: OperationJournal{
+			Journal: OperationJournal{
 				{Type: "attrs", Attrs: []slog.Attr{slog.String("added", "attr")}},
 			},
 		}
