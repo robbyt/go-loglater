@@ -1,3 +1,16 @@
+// Package loglater provides a slog.Handler that captures logs for later replay.
+//
+//	collector := NewLogCollector(nil)
+//	logger := slog.New(collector)
+//
+//	logger.Info("user login", "user_id", 123)
+//
+//	// Inspect captured logs
+//	logs := collector.GetLogs()
+//	fmt.Println(logs[0].Message) // "user login"
+//
+//	// Replay to any handler
+//	collector.PlayLogs(slog.NewJSONHandler(os.Stdout, nil))
 package loglater
 
 import (
@@ -29,8 +42,7 @@ type Storage interface {
 type LogCollector struct {
 	store   Storage
 	handler slog.Handler
-	groups  []string
-	attrs   []slog.Attr
+	journal storage.OperationJournal
 }
 
 // NewLogCollector creates a new log collector with an underlying handler and optional configuration
@@ -38,8 +50,7 @@ func NewLogCollector(baseHandler slog.Handler, opts ...Option) *LogCollector {
 	lc := &LogCollector{
 		store:   storage.NewRecordStorage(),
 		handler: baseHandler,
-		groups:  make([]string, 0),
-		attrs:   make([]slog.Attr, 0),
+		journal: make(storage.OperationJournal, 0),
 	}
 
 	// Apply all options
@@ -52,20 +63,13 @@ func NewLogCollector(baseHandler slog.Handler, opts ...Option) *LogCollector {
 
 // Handle implements slog.Handler.Handle
 func (c *LogCollector) Handle(ctx context.Context, r slog.Record) error {
-	g := slices.Clone(c.groups)
-	storedRecord := storage.NewRecord(ctx, g, &r)
+	journalCopy := slices.Clone(c.journal)
+	storedRecord := storage.NewRecord(ctx, journalCopy, &r)
 	if storedRecord == nil {
 		return errors.New("failed to create record")
 	}
 
-	// Add the collector's attributes to the stored record, added via WithAttrs()
-	if len(c.attrs) > 0 {
-		storedRecord.Attrs = append(storedRecord.Attrs, c.attrs...)
-	}
-
-	if c.store != nil {
-		c.store.Append(storedRecord)
-	}
+	c.store.Append(storedRecord)
 
 	// Forward to underlying handler if it exists
 	if c.handler != nil {
@@ -95,19 +99,18 @@ func (c *LogCollector) WithAttrs(attrs []slog.Attr) slog.Handler {
 		newHandler = c.handler.WithAttrs(attrs)
 	}
 
-	// Create a deep copy of the groups and attrs slices
-	groupsCopy := slices.Clone(c.groups)
-	attrsCopy := slices.Clone(c.attrs)
-
-	// Append the new attributes
-	attrsCopy = append(attrsCopy, attrs...)
+	// Add the WithGroup operation to the new copy of the journal
+	journalCopy := slices.Clone(c.journal)
+	journalCopy = append(journalCopy, storage.Operation{
+		Type:  storage.OpAttrs,
+		Attrs: attrs,
+	})
 
 	// Create a new collector that shares the same record store
 	return &LogCollector{
 		store:   c.store,
 		handler: newHandler,
-		groups:  groupsCopy,
-		attrs:   attrsCopy,
+		journal: journalCopy,
 	}
 }
 
@@ -124,28 +127,23 @@ func (c *LogCollector) WithGroup(name string) slog.Handler {
 		newHandler = c.handler.WithGroup(name)
 	}
 
-	// Copy existing groups and append the new group
-	newGroups := slices.Clone(c.groups)
-	newGroups = append(newGroups, name)
-
-	// Copy existing attributes
-	newAttrs := slices.Clone(c.attrs)
+	// Add the WithGroup operation to the new copy of the journal
+	journalCopy := slices.Clone(c.journal)
+	journalCopy = append(journalCopy, storage.Operation{
+		Type:  storage.OpGroup,
+		Group: name,
+	})
 
 	// Create a new collector that shares the same record store
 	return &LogCollector{
 		store:   c.store,
 		handler: newHandler,
-		groups:  newGroups,
-		attrs:   newAttrs,
+		journal: journalCopy,
 	}
 }
 
 // PlayLogsCtx outputs all stored logs to the provided handler with context support
 func (c *LogCollector) PlayLogsCtx(ctx context.Context, handler slog.Handler) error {
-	if c.store == nil {
-		return nil
-	}
-
 	if handler == nil {
 		return errors.New("handler is nil")
 	}
@@ -161,9 +159,14 @@ func (c *LogCollector) PlayLogsCtx(ctx context.Context, handler slog.Handler) er
 
 		currentHandler := handler
 
-		// Apply groups from the stored records
-		for _, group := range stored.Groups {
-			currentHandler = currentHandler.WithGroup(group)
+		// Replay the journal of WithAttrs/WithGroup operations
+		for _, op := range stored.Journal {
+			switch op.Type {
+			case storage.OpAttrs:
+				currentHandler = currentHandler.WithAttrs(op.Attrs)
+			case storage.OpGroup:
+				currentHandler = currentHandler.WithGroup(op.Group)
+			}
 		}
 
 		// Create a new record from the stored data, preserving the original PC
@@ -185,10 +188,16 @@ func (c *LogCollector) PlayLogs(handler slog.Handler) error {
 	return c.PlayLogsCtx(context.Background(), handler)
 }
 
-// GetLogs returns a copy of the collected logs
+// GetLogs returns a copy of the collected logs with all attributes and groups applied.
+// Each returned record contains the same attributes that would be present during replay.
 func (c *LogCollector) GetLogs() []storage.Record {
-	if c.store == nil {
-		return nil
+	// Get raw records and realize them for the user
+	rawRecords := c.store.GetAll()
+	realizedRecords := make([]storage.Record, len(rawRecords))
+
+	for i, record := range rawRecords {
+		realizedRecords[i] = record.Realize()
 	}
-	return c.store.GetAll()
+
+	return realizedRecords
 }
