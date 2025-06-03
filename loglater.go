@@ -1,38 +1,16 @@
-// Package loglater provides a slog.Handler implementation that captures structured logs
-// for later replay, enabling powerful testing and debugging capabilities.
+// Package loglater provides a slog.Handler that captures logs for later replay.
 //
-// Why This Package Exists:
+//	collector := NewLogCollector(nil)
+//	logger := slog.New(collector)
 //
-// Testing code that uses structured logging is challenging. You want to verify that
-// your code logs the right messages with the right attributes, but you also want
-// those logs to be available for debugging when tests fail. This package solves
-// both needs by capturing logs during execution and allowing you to replay them
-// to any slog.Handler later.
+//	logger.Info("user login", "user_id", 123)
 //
-// The Temporal Ordering Challenge:
+//	// Inspect captured logs
+//	logs := collector.GetLogs()
+//	fmt.Println(logs[0].Message) // "user login"
 //
-// A subtle but critical challenge in log replay is preserving the exact relationship
-// between attributes and groups. Consider this logger:
-//
-//	logger.With("global", "value").WithGroup("api").With("user", "123")
-//
-// When replaying, "global" must remain a top-level attribute while "user" must be
-// grouped under "api". The naive approach of storing attributes and groups separately
-// fails because it loses the temporal ordering of operations.
-//
-// Our Solution - Operation Sequences:
-//
-// We record every WithAttrs() and WithGroup() call as an ordered sequence of operations.
-// During replay, we execute these operations in the exact same order, reconstructing
-// the precise handler state that existed when the log was created. This ensures that
-// attributes added before groups remain global, while attributes added after groups
-// are properly nested.
-//
-// Usage:
-//
-// GetLogs() returns fully realized log records with all attributes and groups applied,
-// exactly as they would appear during replay. This includes both the log message's own
-// attributes and any attributes added via WithAttrs(), with proper group nesting.
+//	// Replay to any handler
+//	collector.PlayLogs(slog.NewJSONHandler(os.Stdout, nil))
 package loglater
 
 import (
@@ -215,8 +193,7 @@ func (c *LogCollector) PlayLogs(handler slog.Handler) error {
 }
 
 // GetLogs returns a copy of the collected logs with all attributes and groups applied.
-// Each returned record contains the complete set of attributes that would be present
-// during replay, including attributes from WithAttrs calls and proper group nesting.
+// Each returned record contains the same attributes that would be present during replay.
 func (c *LogCollector) GetLogs() []storage.Record {
 	// Get raw records and realize them for the user
 	rawRecords := c.store.GetAll()

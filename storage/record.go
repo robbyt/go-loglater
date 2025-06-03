@@ -22,7 +22,7 @@ type Operation struct {
 	Group string      // for WithGroup operations
 }
 
-// OperationJournal represents the complete sequence of WithAttrs and WithGroup operations
+// OperationJournal represents the sequence of WithAttrs and WithGroup operations
 // that were applied to create a particular logger instance.
 //
 // This sequence is stored alongside each log record and replayed during log output
@@ -30,7 +30,7 @@ type Operation struct {
 // relationship between global attributes (added before groups) and grouped attributes
 // (added after groups).
 //
-// Without this sequence tracking, attributes could be incorrectly grouped during replay,
+// Without this journal, attributes could be incorrectly grouped during replay,
 // causing "global=value" to become "group.global=value".
 type OperationJournal []Operation
 
@@ -47,8 +47,7 @@ type Record struct {
 // NewRecord creates a new Record from a slog.Record and handler sequence.
 //
 // The sequence parameter captures the exact order of WithAttrs() and WithGroup() operations
-// that were used to create the logger instance that generated this log record. This sequence
-// is essential for accurate replay of the log with correct attribute grouping.
+// that were used to create the logger instance that generated this log record.
 func NewRecord(_ context.Context, sequence OperationJournal, r *slog.Record) *Record {
 	if r == nil {
 		return nil
@@ -73,8 +72,6 @@ func NewRecord(_ context.Context, sequence OperationJournal, r *slog.Record) *Re
 }
 
 // Realize returns a new Record with all attributes from the sequence applied.
-// This includes both collector attributes (from WithAttrs) and message attributes,
-// with proper group nesting applied.
 func (r *Record) Realize() Record {
 	result := Record{
 		Time:     r.Time,
