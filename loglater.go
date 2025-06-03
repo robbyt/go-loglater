@@ -63,8 +63,8 @@ func NewLogCollector(baseHandler slog.Handler, opts ...Option) *LogCollector {
 
 // Handle implements slog.Handler.Handle
 func (c *LogCollector) Handle(ctx context.Context, r slog.Record) error {
-	seq := slices.Clone(c.journal)
-	storedRecord := storage.NewRecord(ctx, seq, &r)
+	journalCopy := slices.Clone(c.journal)
+	storedRecord := storage.NewRecord(ctx, journalCopy, &r)
 	if storedRecord == nil {
 		return errors.New("failed to create record")
 	}
