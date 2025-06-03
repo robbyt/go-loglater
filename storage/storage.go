@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -122,9 +123,5 @@ func (s *MemStorage) Append(record *Record) {
 func (s *MemStorage) GetAll() []Record {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	// Create copies to avoid external mutations
-	records := make([]Record, len(s.records))
-	copy(records, s.records)
-	return records
+	return slices.Clone(s.records)
 }
