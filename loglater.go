@@ -99,10 +99,8 @@ func (c *LogCollector) WithAttrs(attrs []slog.Attr) slog.Handler {
 		newHandler = c.handler.WithAttrs(attrs)
 	}
 
-	// Clone the journal to avoid mutation between handler instances
+	// Add the WithGroup operation to the new copy of the journal
 	journalCopy := slices.Clone(c.journal)
-
-	// Add the WithAttrs operation to the journal
 	journalCopy = append(journalCopy, storage.Operation{
 		Type:  storage.OpAttrs,
 		Attrs: attrs,
@@ -129,10 +127,8 @@ func (c *LogCollector) WithGroup(name string) slog.Handler {
 		newHandler = c.handler.WithGroup(name)
 	}
 
-	// Clone the journal to avoid mutation between handler instances
+	// Add the WithGroup operation to the new copy of the journal
 	journalCopy := slices.Clone(c.journal)
-
-	// Add the WithGroup operation to the journal
 	journalCopy = append(journalCopy, storage.Operation{
 		Type:  storage.OpGroup,
 		Group: name,
@@ -163,7 +159,7 @@ func (c *LogCollector) PlayLogsCtx(ctx context.Context, handler slog.Handler) er
 
 		currentHandler := handler
 
-		// Replay the exact journal of WithAttrs/WithGroup operations
+		// Replay the journal of WithAttrs/WithGroup operations
 		for _, op := range stored.Journal {
 			switch op.Type {
 			case storage.OpAttrs:
