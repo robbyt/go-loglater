@@ -425,16 +425,16 @@ func TestEdgeCases(t *testing.T) {
 		// Create a collector with multiple logs
 		collector := NewLogCollector(nil)
 		logger := slog.New(collector)
-		
+
 		// Add several logs to ensure we have enough to process
 		for i := 0; i < 5; i++ {
 			logger.Info("Test message", "index", i)
 		}
-		
+
 		// Create a canceled context
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately
-		
+
 		// Should return context.Canceled error
 		err := collector.PlayLogsCtx(ctx, slog.NewTextHandler(io.Discard, nil))
 		if err != context.Canceled {
@@ -447,16 +447,16 @@ func TestEdgeCases(t *testing.T) {
 		collector := NewLogCollector(nil)
 		logger := slog.New(collector)
 		logger.Info("Test message")
-		
+
 		// Create a context with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 		defer cancel()
-		
+
 		// Create a handler that sleeps to trigger timeout
 		slowHandler := &sleepyHandler{
 			sleepTime: 100 * time.Millisecond,
 		}
-		
+
 		// Should return context.DeadlineExceeded error
 		err := collector.PlayLogsCtx(ctx, slowHandler)
 		if err != context.DeadlineExceeded {
