@@ -169,8 +169,8 @@ func TestNewRecord(t *testing.T) {
 
 	t.Run("Journal preservation", func(t *testing.T) {
 		journal := OperationJournal{
-			{Type: "attrs", Attrs: []slog.Attr{slog.String("global", "value")}},
-			{Type: "group", Group: "api"},
+			{Type: OpAttrs, Attrs: []slog.Attr{slog.String("global", "value")}},
+			{Type: OpGroup, Group: "api"},
 		}
 
 		slogRecord := slog.NewRecord(fixedTime, slog.LevelInfo, "journal test", 0)
@@ -184,12 +184,12 @@ func TestNewRecord(t *testing.T) {
 			t.Errorf("Expected journal length 2, got %d", len(record.Journal))
 		}
 
-		if record.Journal[0].Type != "attrs" {
-			t.Errorf("Expected first operation type 'attrs', got %q", record.Journal[0].Type)
+		if record.Journal[0].Type != OpAttrs {
+			t.Errorf("Expected first operation type OpAttrs, got %v", record.Journal[0].Type)
 		}
 
-		if record.Journal[1].Type != "group" {
-			t.Errorf("Expected second operation type 'group', got %q", record.Journal[1].Type)
+		if record.Journal[1].Type != OpGroup {
+			t.Errorf("Expected second operation type OpGroup, got %v", record.Journal[1].Type)
 		}
 
 		if record.Journal[1].Group != "api" {
@@ -209,9 +209,9 @@ func TestRecordRealize(t *testing.T) {
 			PC:      123,
 			Attrs:   []slog.Attr{slog.String("msg", "value")},
 			Journal: OperationJournal{
-				{Type: "attrs", Attrs: []slog.Attr{slog.String("global", "value")}},
-				{Type: "group", Group: "api"},
-				{Type: "attrs", Attrs: []slog.Attr{slog.String("user", "123")}},
+				{Type: OpAttrs, Attrs: []slog.Attr{slog.String("global", "value")}},
+				{Type: OpGroup, Group: "api"},
+				{Type: OpAttrs, Attrs: []slog.Attr{slog.String("user", "123")}},
 			},
 		}
 
@@ -267,7 +267,7 @@ func TestRecordRealize(t *testing.T) {
 			PC:      123,
 			Attrs:   []slog.Attr{slog.String("original", "attr")},
 			Journal: OperationJournal{
-				{Type: "attrs", Attrs: []slog.Attr{slog.String("added", "attr")}},
+				{Type: OpAttrs, Attrs: []slog.Attr{slog.String("added", "attr")}},
 			},
 		}
 

@@ -60,7 +60,7 @@ func (r *Record) Realize() Record {
 
 	for _, op := range r.Journal {
 		switch op.Type {
-		case "attrs":
+		case OpAttrs:
 			if len(currentGroups) > 0 {
 				// These attributes belong to the current group
 				for _, attr := range op.Attrs {
@@ -70,7 +70,7 @@ func (r *Record) Realize() Record {
 				// Global attributes
 				collectorAttrs = append(collectorAttrs, op.Attrs...)
 			}
-		case "group":
+		case OpGroup:
 			currentGroups = append(currentGroups, op.Group)
 		}
 	}

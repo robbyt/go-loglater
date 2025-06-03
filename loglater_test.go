@@ -443,9 +443,9 @@ func TestStorageBehavior(t *testing.T) {
 			Message: "test",
 			Attrs:   []slog.Attr{slog.String("msg_attr", "value")},
 			Journal: storage.OperationJournal{
-				{Type: "attrs", Attrs: []slog.Attr{slog.String("global", "value")}},
-				{Type: "group", Group: "g1"},
-				{Type: "attrs", Attrs: []slog.Attr{slog.String("grouped", "value")}},
+				{Type: storage.OpAttrs, Attrs: []slog.Attr{slog.String("global", "value")}},
+				{Type: storage.OpGroup, Group: "g1"},
+				{Type: storage.OpAttrs, Attrs: []slog.Attr{slog.String("grouped", "value")}},
 			},
 		}
 
@@ -476,9 +476,9 @@ func TestStorageBehavior(t *testing.T) {
 			Message: "test",
 			Attrs:   []slog.Attr{slog.String("msg", "value")},
 			Journal: storage.OperationJournal{
-				{Type: "attrs", Attrs: []slog.Attr{slog.String("global", "value")}},
-				{Type: "group", Group: "g1"},
-				{Type: "attrs", Attrs: []slog.Attr{slog.String("grouped", "value")}},
+				{Type: storage.OpAttrs, Attrs: []slog.Attr{slog.String("global", "value")}},
+				{Type: storage.OpGroup, Group: "g1"},
+				{Type: storage.OpAttrs, Attrs: []slog.Attr{slog.String("grouped", "value")}},
 			},
 		}
 
