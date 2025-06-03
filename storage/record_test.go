@@ -168,7 +168,7 @@ func TestNewRecord(t *testing.T) {
 	})
 
 	t.Run("Sequence preservation", func(t *testing.T) {
-		sequence := HandlerSequence{
+		sequence := OperationJournal{
 			{Type: "attrs", Attrs: []slog.Attr{slog.String("global", "value")}},
 			{Type: "group", Group: "api"},
 		}
@@ -208,7 +208,7 @@ func TestRecordRealize(t *testing.T) {
 			Message: "test",
 			PC:      123,
 			Attrs:   []slog.Attr{slog.String("msg", "value")},
-			Sequence: HandlerSequence{
+			Sequence: OperationJournal{
 				{Type: "attrs", Attrs: []slog.Attr{slog.String("global", "value")}},
 				{Type: "group", Group: "api"},
 				{Type: "attrs", Attrs: []slog.Attr{slog.String("user", "123")}},
@@ -245,7 +245,7 @@ func TestRecordRealize(t *testing.T) {
 			Level:    slog.LevelInfo,
 			Message:  "test",
 			Attrs:    []slog.Attr{slog.String("key", "value")},
-			Sequence: HandlerSequence{},
+			Sequence: OperationJournal{},
 		}
 
 		realized := record.Realize()
@@ -266,7 +266,7 @@ func TestRecordRealize(t *testing.T) {
 			Message: "original message",
 			PC:      123,
 			Attrs:   []slog.Attr{slog.String("original", "attr")},
-			Sequence: HandlerSequence{
+			Sequence: OperationJournal{
 				{Type: "attrs", Attrs: []slog.Attr{slog.String("added", "attr")}},
 			},
 		}

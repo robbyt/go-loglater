@@ -22,7 +22,7 @@ type Operation struct {
 	Group string      // for WithGroup operations
 }
 
-// HandlerSequence represents the complete sequence of WithAttrs and WithGroup operations
+// OperationJournal represents the complete sequence of WithAttrs and WithGroup operations
 // that were applied to create a particular logger instance.
 //
 // This sequence is stored alongside each log record and replayed during log output
@@ -32,7 +32,7 @@ type Operation struct {
 //
 // Without this sequence tracking, attributes could be incorrectly grouped during replay,
 // causing "global=value" to become "group.global=value".
-type HandlerSequence []Operation
+type OperationJournal []Operation
 
 // Record represents a log Record that can be stored, somewhere.
 type Record struct {
@@ -41,7 +41,7 @@ type Record struct {
 	Message  string
 	PC       uintptr // Program counter for call site information
 	Attrs    []slog.Attr
-	Sequence HandlerSequence // Sequence of handler operations for accurate replay
+	Sequence OperationJournal // Sequence of handler operations for accurate replay
 }
 
 // NewRecord creates a new Record from a slog.Record and handler sequence.
@@ -49,7 +49,7 @@ type Record struct {
 // The sequence parameter captures the exact order of WithAttrs() and WithGroup() operations
 // that were used to create the logger instance that generated this log record. This sequence
 // is essential for accurate replay of the log with correct attribute grouping.
-func NewRecord(_ context.Context, sequence HandlerSequence, r *slog.Record) *Record {
+func NewRecord(_ context.Context, sequence OperationJournal, r *slog.Record) *Record {
 	if r == nil {
 		return nil
 	}

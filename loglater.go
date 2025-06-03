@@ -64,7 +64,7 @@ type Storage interface {
 type LogCollector struct {
 	store    Storage
 	handler  slog.Handler
-	sequence storage.HandlerSequence
+	sequence storage.OperationJournal
 }
 
 // NewLogCollector creates a new log collector with an underlying handler and optional configuration
@@ -72,7 +72,7 @@ func NewLogCollector(baseHandler slog.Handler, opts ...Option) *LogCollector {
 	lc := &LogCollector{
 		store:    storage.NewRecordStorage(),
 		handler:  baseHandler,
-		sequence: make(storage.HandlerSequence, 0),
+		sequence: make(storage.OperationJournal, 0),
 	}
 
 	// Apply all options

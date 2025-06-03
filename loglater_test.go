@@ -442,7 +442,7 @@ func TestStorageBehavior(t *testing.T) {
 			Level:   slog.LevelInfo,
 			Message: "test",
 			Attrs:   []slog.Attr{slog.String("msg_attr", "value")},
-			Sequence: storage.HandlerSequence{
+			Sequence: storage.OperationJournal{
 				{Type: "attrs", Attrs: []slog.Attr{slog.String("global", "value")}},
 				{Type: "group", Group: "g1"},
 				{Type: "attrs", Attrs: []slog.Attr{slog.String("grouped", "value")}},
@@ -475,7 +475,7 @@ func TestStorageBehavior(t *testing.T) {
 			Level:   slog.LevelInfo,
 			Message: "test",
 			Attrs:   []slog.Attr{slog.String("msg", "value")},
-			Sequence: storage.HandlerSequence{
+			Sequence: storage.OperationJournal{
 				{Type: "attrs", Attrs: []slog.Attr{slog.String("global", "value")}},
 				{Type: "group", Group: "g1"},
 				{Type: "attrs", Attrs: []slog.Attr{slog.String("grouped", "value")}},
