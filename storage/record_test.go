@@ -154,30 +154,190 @@ func TestNewRecord(t *testing.T) {
 		}
 	})
 
-	t.Run("Context propagation", func(t *testing.T) {
-		// Test that context is correctly used (currently the implementation doesn't use context,
-		// but we should test for it in case that changes in the future)
-
-		// Create a context with a value
-		type ctxKey string
-		testKey := ctxKey("test-key")
-		testValue := "test-value"
-		ctx := context.WithValue(context.Background(), testKey, testValue)
-
-		// Create a record
-		slogRecord := slog.NewRecord(fixedTime, slog.LevelInfo, "context test", 0)
-		record := NewRecord(ctx, nil, &slogRecord)
+	t.Run("PC preservation", func(t *testing.T) {
+		slogRecord := slog.NewRecord(fixedTime, slog.LevelInfo, "pc test", 12345)
+		record := NewRecord(context.Background(), nil, &slogRecord)
 
 		if record == nil {
 			t.Fatal("Expected non-nil record")
 		}
 
-		// Basic checks to ensure record was created correctly
-		if record.Message != "context test" {
-			t.Errorf("Expected message 'context test', got %q", record.Message)
+		if record.PC != 12345 {
+			t.Errorf("Expected PC 12345, got %d", record.PC)
+		}
+	})
+
+	t.Run("Sequence preservation", func(t *testing.T) {
+		sequence := HandlerSequence{
+			{Type: "attrs", Attrs: []slog.Attr{slog.String("global", "value")}},
+			{Type: "group", Group: "api"},
 		}
 
-		// The current implementation doesn't use context, but this test ensures
-		// we have coverage if that changes in the future
+		slogRecord := slog.NewRecord(fixedTime, slog.LevelInfo, "sequence test", 0)
+		record := NewRecord(context.Background(), sequence, &slogRecord)
+
+		if record == nil {
+			t.Fatal("Expected non-nil record")
+		}
+
+		if len(record.Sequence) != 2 {
+			t.Errorf("Expected sequence length 2, got %d", len(record.Sequence))
+		}
+
+		if record.Sequence[0].Type != "attrs" {
+			t.Errorf("Expected first operation type 'attrs', got %q", record.Sequence[0].Type)
+		}
+
+		if record.Sequence[1].Type != "group" {
+			t.Errorf("Expected second operation type 'group', got %q", record.Sequence[1].Type)
+		}
+
+		if record.Sequence[1].Group != "api" {
+			t.Errorf("Expected group name 'api', got %q", record.Sequence[1].Group)
+		}
+	})
+}
+
+func TestRecordRealize(t *testing.T) {
+	fixedTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	t.Run("AppliesSequenceCorrectly", func(t *testing.T) {
+		record := Record{
+			Time:    fixedTime,
+			Level:   slog.LevelInfo,
+			Message: "test",
+			PC:      123,
+			Attrs:   []slog.Attr{slog.String("msg", "value")},
+			Sequence: HandlerSequence{
+				{Type: "attrs", Attrs: []slog.Attr{slog.String("global", "value")}},
+				{Type: "group", Group: "api"},
+				{Type: "attrs", Attrs: []slog.Attr{slog.String("user", "123")}},
+			},
+		}
+
+		realized := record.Realize()
+
+		if realized.Time != fixedTime {
+			t.Errorf("Time not preserved")
+		}
+		if realized.Level != slog.LevelInfo {
+			t.Errorf("Level not preserved")
+		}
+		if realized.Message != "test" {
+			t.Errorf("Message not preserved")
+		}
+		if realized.PC != 123 {
+			t.Errorf("PC not preserved")
+		}
+
+		if len(realized.Attrs) != 3 {
+			t.Fatalf("Expected 3 attributes, got %d", len(realized.Attrs))
+		}
+
+		if realized.Attrs[0].Key != "global" {
+			t.Errorf("Expected first attribute to be 'global', got %q", realized.Attrs[0].Key)
+		}
+	})
+
+	t.Run("HandlesEmptySequence", func(t *testing.T) {
+		record := Record{
+			Time:     fixedTime,
+			Level:    slog.LevelInfo,
+			Message:  "test",
+			Attrs:    []slog.Attr{slog.String("key", "value")},
+			Sequence: HandlerSequence{},
+		}
+
+		realized := record.Realize()
+
+		if len(realized.Attrs) != 1 {
+			t.Fatalf("Expected 1 attribute, got %d", len(realized.Attrs))
+		}
+
+		if realized.Attrs[0].Key != "key" {
+			t.Errorf("Expected attribute key 'key', got %q", realized.Attrs[0].Key)
+		}
+	})
+
+	t.Run("PreservesOriginalRecord", func(t *testing.T) {
+		original := Record{
+			Time:    fixedTime,
+			Level:   slog.LevelError,
+			Message: "original message",
+			PC:      123,
+			Attrs:   []slog.Attr{slog.String("original", "attr")},
+			Sequence: HandlerSequence{
+				{Type: "attrs", Attrs: []slog.Attr{slog.String("added", "attr")}},
+			},
+		}
+
+		realized := original.Realize()
+
+		if original.Message != "original message" {
+			t.Errorf("Original message changed")
+		}
+
+		if len(original.Attrs) != 1 {
+			t.Errorf("Original attrs changed")
+		}
+
+		if len(realized.Attrs) != 2 {
+			t.Errorf("Expected 2 realized attributes, got %d", len(realized.Attrs))
+		}
+	})
+}
+
+func TestApplyGroups(t *testing.T) {
+	t.Run("NoGroups", func(t *testing.T) {
+		attr := slog.String("key", "value")
+		result := applyGroups(attr, nil)
+
+		if result.Key != "key" {
+			t.Errorf("Expected key 'key', got %q", result.Key)
+		}
+	})
+
+	t.Run("EmptyGroups", func(t *testing.T) {
+		attr := slog.String("key", "value")
+		result := applyGroups(attr, []string{})
+
+		if result.Key != "key" {
+			t.Errorf("Expected key 'key', got %q", result.Key)
+		}
+	})
+
+	t.Run("SingleGroup", func(t *testing.T) {
+		attr := slog.String("key", "value")
+		result := applyGroups(attr, []string{"group1"})
+
+		if result.Key != "group1" {
+			t.Errorf("Expected key 'group1', got %q", result.Key)
+		}
+
+		if result.Value.Kind() != slog.KindGroup {
+			t.Errorf("Expected group value, got %v", result.Value.Kind())
+		}
+	})
+
+	t.Run("NestedGroups", func(t *testing.T) {
+		attr := slog.String("key", "value")
+		result := applyGroups(attr, []string{"outer", "inner"})
+
+		if result.Key != "outer" {
+			t.Errorf("Expected key 'outer', got %q", result.Key)
+		}
+
+		if result.Value.Kind() != slog.KindGroup {
+			t.Errorf("Expected group value, got %v", result.Value.Kind())
+		}
+
+		outerGroup := result.Value.Group()
+		if len(outerGroup) != 1 {
+			t.Fatalf("Expected 1 item in outer group, got %d", len(outerGroup))
+		}
+
+		if outerGroup[0].Key != "inner" {
+			t.Errorf("Expected inner key 'inner', got %q", outerGroup[0].Key)
+		}
 	})
 }
