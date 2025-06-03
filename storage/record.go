@@ -72,6 +72,8 @@ func (r *Record) Realize() Record {
 			}
 		case OpGroup:
 			currentGroups = append(currentGroups, op.Group)
+		default:
+			// Unknown operation type - ignore
 		}
 	}
 

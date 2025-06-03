@@ -285,6 +285,55 @@ func TestRecordRealize(t *testing.T) {
 			t.Errorf("Expected 2 realized attributes, got %d", len(realized.Attrs))
 		}
 	})
+
+	t.Run("IgnoresUnknownOperationType", func(t *testing.T) {
+		record := Record{
+			Time:    fixedTime,
+			Level:   slog.LevelInfo,
+			Message: "test",
+			Attrs:   []slog.Attr{slog.String("msg", "value")},
+			Journal: OperationJournal{
+				{Type: OpAttrs, Attrs: []slog.Attr{slog.String("global", "value")}},
+				{Type: OperationType(999), Group: "invalid"}, // Unknown operation type
+				{Type: OpGroup, Group: "valid"},
+			},
+		}
+
+		realized := record.Realize()
+
+		// Should have processed global attr and valid group, ignored unknown op
+		if len(realized.Attrs) != 2 {
+			t.Errorf("Expected 2 attributes (global + grouped msg), got %d", len(realized.Attrs))
+		}
+
+		attrs := make(map[string]any)
+		for _, attr := range realized.Attrs {
+			flattenAttrs(attr, "", attrs)
+		}
+
+		if v, ok := attrs["global"]; !ok || v != "value" {
+			t.Errorf("Missing or incorrect global attribute: %v", v)
+		}
+		if v, ok := attrs["valid.msg"]; !ok || v != "value" {
+			t.Errorf("Missing or incorrect valid.msg attribute: %v", v)
+		}
+	})
+}
+
+// flattenAttrs recursively flattens nested attributes into a map with dotted keys
+func flattenAttrs(attr slog.Attr, prefix string, result map[string]any) {
+	key := attr.Key
+	if prefix != "" {
+		key = prefix + "." + key
+	}
+
+	if attr.Value.Kind() == slog.KindGroup {
+		for _, groupAttr := range attr.Value.Group() {
+			flattenAttrs(groupAttr, key, result)
+		}
+	} else {
+		result[key] = attr.Value.Any()
+	}
 }
 
 func TestApplyGroups(t *testing.T) {
