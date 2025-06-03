@@ -91,9 +91,7 @@ func (c *LogCollector) Handle(ctx context.Context, r slog.Record) error {
 		return errors.New("failed to create record")
 	}
 
-	if c.store != nil {
-		c.store.Append(storedRecord)
-	}
+	c.store.Append(storedRecord)
 
 	// Forward to underlying handler if it exists
 	if c.handler != nil {
@@ -172,10 +170,6 @@ func (c *LogCollector) WithGroup(name string) slog.Handler {
 
 // PlayLogsCtx outputs all stored logs to the provided handler with context support
 func (c *LogCollector) PlayLogsCtx(ctx context.Context, handler slog.Handler) error {
-	if c.store == nil {
-		return nil
-	}
-
 	if handler == nil {
 		return errors.New("handler is nil")
 	}
@@ -224,10 +218,6 @@ func (c *LogCollector) PlayLogs(handler slog.Handler) error {
 // Each returned record contains the complete set of attributes that would be present
 // during replay, including attributes from WithAttrs calls and proper group nesting.
 func (c *LogCollector) GetLogs() []storage.Record {
-	if c.store == nil {
-		return nil
-	}
-
 	// Get raw records and realize them for the user
 	rawRecords := c.store.GetAll()
 	realizedRecords := make([]storage.Record, len(rawRecords))
