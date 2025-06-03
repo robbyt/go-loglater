@@ -705,6 +705,10 @@ func compareLogFields(t *testing.T, timestamp string, origFields, replayFields m
 		// Show the differences
 		t.Logf("Original group fields: %v", origGroupFields)
 		t.Logf("Replayed group fields: %v", replayGroupFields)
+
+		// Add more detailed logging to debug non-determinism
+		t.Logf("All original fields: %v", origFields)
+		t.Logf("All replayed fields: %v", replayFields)
 	}
 
 	// Also compare all field values

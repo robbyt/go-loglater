@@ -166,8 +166,8 @@ func (c *LogCollector) PlayLogsCtx(ctx context.Context, handler slog.Handler) er
 			currentHandler = currentHandler.WithGroup(group)
 		}
 
-		// Create a new record from the stored data
-		r := slog.NewRecord(stored.Time, stored.Level, stored.Message, 0)
+		// Create a new record from the stored data, preserving the original PC
+		r := slog.NewRecord(stored.Time, stored.Level, stored.Message, stored.PC)
 		for _, attr := range stored.Attrs {
 			r.AddAttrs(attr)
 		}
