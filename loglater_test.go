@@ -256,7 +256,7 @@ func TestErrorHandling(t *testing.T) {
 		collector := NewLogCollector(nil)
 		logger := slog.New(collector)
 
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			logger.Info("Test message", "index", i)
 		}
 

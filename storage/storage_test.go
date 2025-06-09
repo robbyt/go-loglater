@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"context"
 	"log/slog"
 	"sync"
 	"testing"
@@ -111,7 +110,7 @@ func BenchmarkRecordStorage_GetAll(b *testing.B) {
 				}
 				b.ResetTimer()
 				for b.Loop() {
-					for i := 0; i < tc.gets; i++ {
+					for range tc.gets {
 						_ = store.GetAll()
 					}
 				}
@@ -244,6 +243,33 @@ func TestRecordStorage(t *testing.T) {
 			t.Errorf("Expected 3 attributes, got %d", len(record.Attrs))
 		}
 
+		attr1 := record.Attrs[0]
+		attr2 := record.Attrs[1]
+		attr3 := record.Attrs[2]
+
+		if attr1.Value.Kind() != slog.KindString {
+			t.Errorf("Expected string attribute, got %v", attr1.Value.Kind())
+		}
+
+		if attr1.Value.String() != "value" {
+			t.Errorf("Expected string attribute value 'value', got %q", attr1.Value.String())
+		}
+
+		if attr2.Value.Kind() != slog.KindInt64 {
+			t.Errorf("Expected int attribute, got %v", attr2.Value.Kind())
+		}
+
+		if attr2.Value.Int64() != 42 {
+			t.Errorf("Expected int attribute value 42, got %d", attr2.Value.Int64())
+		}
+
+		if attr3.Value.Kind() != slog.KindBool {
+			t.Errorf("Expected bool attribute, got %v", attr3.Value.Kind())
+		}
+
+		if attr3.Value.Bool() != true {
+			t.Errorf("Expected bool attribute value true, got %v", attr3.Value.Bool())
+		}
 	})
 
 	t.Run("NewRecord", func(t *testing.T) {
@@ -255,7 +281,7 @@ func TestRecordStorage(t *testing.T) {
 		)
 
 		// Create a new Record
-		record := NewRecord(context.Background(), nil, &r)
+		record := NewRecord(t.Context(), nil, &r)
 
 		// Verify basic fields
 		if record.Message != "test message" {
@@ -271,6 +297,24 @@ func TestRecordStorage(t *testing.T) {
 			t.Errorf("Expected 2 attributes, got %d", len(record.Attrs))
 		}
 
+		attr1 := record.Attrs[0]
+		attr2 := record.Attrs[1]
+
+		if attr1.Value.Kind() != slog.KindString {
+			t.Errorf("Expected string attribute, got %v", attr1.Value.Kind())
+		}
+
+		if attr1.Value.String() != "value1" {
+			t.Errorf("Expected string attribute value 'value1', got %q", attr1.Value.String())
+		}
+
+		if attr2.Value.Kind() != slog.KindInt64 {
+			t.Errorf("Expected int attribute, got %v", attr2.Value.Kind())
+		}
+
+		if attr2.Value.Int64() != 42 {
+			t.Errorf("Expected int attribute value 42, got %d", attr2.Value.Int64())
+		}
 	})
 
 	t.Run("ConcurrentAccess", func(t *testing.T) {
