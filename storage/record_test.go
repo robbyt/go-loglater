@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"reflect"
 	"testing"
@@ -318,6 +319,131 @@ func TestRecordRealize(t *testing.T) {
 			t.Errorf("Missing or incorrect valid.msg attribute: %v", v)
 		}
 	})
+
+	t.Run("ComplexNestedGroupsWithMultipleAttrs", func(t *testing.T) {
+		record := Record{
+			Time:    fixedTime,
+			Level:   slog.LevelInfo,
+			Message: "complex test",
+			Attrs: []slog.Attr{
+				slog.String("request_id", "123"),
+				slog.Int("status", 200),
+			},
+			Journal: OperationJournal{
+				{Type: OpAttrs, Attrs: []slog.Attr{
+					slog.String("service", "api"),
+					slog.String("version", "v1"),
+				}},
+				{Type: OpGroup, Group: "http"},
+				{Type: OpAttrs, Attrs: []slog.Attr{
+					slog.String("method", "GET"),
+					slog.String("path", "/users"),
+				}},
+				{Type: OpGroup, Group: "response"},
+				{Type: OpAttrs, Attrs: []slog.Attr{
+					slog.Duration("latency", 100*time.Millisecond),
+				}},
+			},
+		}
+
+		realized := record.Realize()
+
+		// Should have:
+		// - 2 global attrs (service, version)
+		// - 2 attrs in http group (method, path)
+		// - 1 attr in http.response group (latency)
+		// - 2 record attrs in http.response group (request_id, status)
+		// Total: 7 attributes
+		if len(realized.Attrs) != 7 {
+			t.Errorf("Expected 7 attributes, got %d", len(realized.Attrs))
+		}
+
+		// Flatten and verify structure
+		attrs := make(map[string]any)
+		for _, attr := range realized.Attrs {
+			flattenAttrs(attr, "", attrs)
+		}
+
+		// Check global attributes
+		if v, ok := attrs["service"]; !ok || v != "api" {
+			t.Errorf("Missing or incorrect service attribute: %v", v)
+		}
+		if v, ok := attrs["version"]; !ok || v != "v1" {
+			t.Errorf("Missing or incorrect version attribute: %v", v)
+		}
+
+		// Check http group attributes
+		if v, ok := attrs["http.method"]; !ok || v != "GET" {
+			t.Errorf("Missing or incorrect http.method attribute: %v", v)
+		}
+		if v, ok := attrs["http.path"]; !ok || v != "/users" {
+			t.Errorf("Missing or incorrect http.path attribute: %v", v)
+		}
+
+		// Check nested http.response group attributes
+		if _, ok := attrs["http.response.latency"]; !ok {
+			t.Errorf("Missing http.response.latency attribute")
+		}
+		if v, ok := attrs["http.response.request_id"]; !ok || v != "123" {
+			t.Errorf("Missing or incorrect http.response.request_id attribute: %v", v)
+		}
+		if v, ok := attrs["http.response.status"]; !ok || v != int64(200) {
+			t.Errorf("Missing or incorrect http.response.status attribute: %v", v)
+		}
+	})
+
+	t.Run("EmptyGroupNames", func(t *testing.T) {
+		record := Record{
+			Time:    fixedTime,
+			Level:   slog.LevelInfo,
+			Message: "test",
+			Attrs:   []slog.Attr{slog.String("key", "value")},
+			Journal: OperationJournal{
+				{Type: OpGroup, Group: ""}, // Empty group name
+				{Type: OpAttrs, Attrs: []slog.Attr{slog.String("attr", "val")}},
+			},
+		}
+
+		realized := record.Realize()
+
+		// Empty group should still be applied
+		if len(realized.Attrs) != 2 {
+			t.Errorf("Expected 2 attributes, got %d", len(realized.Attrs))
+		}
+
+		// Both attrs should be within empty group
+		for _, attr := range realized.Attrs {
+			if attr.Key != "" {
+				t.Errorf("Expected empty group key, got %q", attr.Key)
+			}
+			if attr.Value.Kind() != slog.KindGroup {
+				t.Errorf("Expected group kind, got %v", attr.Value.Kind())
+			}
+		}
+	})
+
+	t.Run("RecordWithNoAttrs", func(t *testing.T) {
+		record := Record{
+			Time:    fixedTime,
+			Level:   slog.LevelInfo,
+			Message: "no attrs",
+			Journal: OperationJournal{
+				{Type: OpAttrs, Attrs: []slog.Attr{slog.String("collector", "attr")}},
+				{Type: OpGroup, Group: "group"},
+			},
+		}
+
+		realized := record.Realize()
+
+		// Should only have the collector attribute
+		if len(realized.Attrs) != 1 {
+			t.Errorf("Expected 1 attribute, got %d", len(realized.Attrs))
+		}
+
+		if realized.Attrs[0].Key != "collector" {
+			t.Errorf("Expected attribute key 'collector', got %q", realized.Attrs[0].Key)
+		}
+	})
 }
 
 // flattenAttrs recursively flattens nested attributes into a map with dotted keys
@@ -387,6 +513,198 @@ func TestApplyGroups(t *testing.T) {
 
 		if outerGroup[0].Key != "inner" {
 			t.Errorf("Expected inner key 'inner', got %q", outerGroup[0].Key)
+		}
+	})
+
+	t.Run("DeeplyNestedGroups", func(t *testing.T) {
+		attr := slog.Int("count", 42)
+		result := applyGroups(attr, []string{"level1", "level2", "level3", "level4"})
+
+		// Verify top level
+		if result.Key != "level1" {
+			t.Errorf("Expected key 'level1', got %q", result.Key)
+		}
+
+		// Navigate through all levels
+		current := result
+		for i, expectedKey := range []string{"level1", "level2", "level3", "level4"} {
+			if current.Key != expectedKey {
+				t.Errorf("Level %d: expected key %q, got %q", i, expectedKey, current.Key)
+			}
+
+			if i < 3 { // Not the last level
+				if current.Value.Kind() != slog.KindGroup {
+					t.Errorf("Level %d: expected group kind, got %v", i, current.Value.Kind())
+				}
+				group := current.Value.Group()
+				if len(group) != 1 {
+					t.Fatalf("Level %d: expected 1 item in group, got %d", i, len(group))
+				}
+				current = group[0]
+			} else { // Last level should contain the actual attribute
+				group := current.Value.Group()
+				if len(group) != 1 {
+					t.Fatalf("Final level: expected 1 item in group, got %d", len(group))
+				}
+				if group[0].Key != "count" {
+					t.Errorf("Expected final attribute key 'count', got %q", group[0].Key)
+				}
+				if group[0].Value.Int64() != 42 {
+					t.Errorf("Expected final value 42, got %d", group[0].Value.Int64())
+				}
+			}
+		}
+	})
+}
+
+func BenchmarkNewRecord(b *testing.B) {
+	fixedTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	ctx := context.Background()
+
+	b.Run("WithoutAttrs", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			slogRecord := slog.NewRecord(fixedTime, slog.LevelInfo, "test message", 0)
+			_ = NewRecord(ctx, nil, &slogRecord)
+		}
+	})
+
+	b.Run("With3Attrs", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			slogRecord := slog.NewRecord(fixedTime, slog.LevelInfo, "test message", 0)
+			slogRecord.AddAttrs(
+				slog.String("key1", "value1"),
+				slog.Int("key2", 42),
+				slog.Bool("key3", true),
+			)
+			_ = NewRecord(ctx, nil, &slogRecord)
+		}
+	})
+
+	b.Run("With10Attrs", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			slogRecord := slog.NewRecord(fixedTime, slog.LevelInfo, "test message", 0)
+			for j := 0; j < 10; j++ {
+				slogRecord.AddAttrs(slog.String(fmt.Sprintf("key%d", j), fmt.Sprintf("value%d", j)))
+			}
+			_ = NewRecord(ctx, nil, &slogRecord)
+		}
+	})
+
+	b.Run("WithJournal", func(b *testing.B) {
+		journal := OperationJournal{
+			{Type: OpAttrs, Attrs: []slog.Attr{slog.String("global", "value")}},
+			{Type: OpGroup, Group: "api"},
+			{Type: OpAttrs, Attrs: []slog.Attr{slog.String("method", "GET")}},
+		}
+		b.ReportAllocs()
+		for b.Loop() {
+			slogRecord := slog.NewRecord(fixedTime, slog.LevelInfo, "test message", 0)
+			slogRecord.AddAttrs(slog.String("key", "value"))
+			_ = NewRecord(ctx, journal, &slogRecord)
+		}
+	})
+}
+
+func BenchmarkRecordRealize(b *testing.B) {
+	fixedTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	b.Run("NoJournal", func(b *testing.B) {
+		record := Record{
+			Time:    fixedTime,
+			Level:   slog.LevelInfo,
+			Message: "test",
+			Attrs:   []slog.Attr{slog.String("key", "value")},
+			Journal: OperationJournal{},
+		}
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = record.Realize()
+		}
+	})
+
+	b.Run("SimpleJournal", func(b *testing.B) {
+		record := Record{
+			Time:    fixedTime,
+			Level:   slog.LevelInfo,
+			Message: "test",
+			Attrs:   []slog.Attr{slog.String("msg", "value")},
+			Journal: OperationJournal{
+				{Type: OpAttrs, Attrs: []slog.Attr{slog.String("global", "value")}},
+				{Type: OpGroup, Group: "api"},
+			},
+		}
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = record.Realize()
+		}
+	})
+
+	b.Run("ComplexJournal", func(b *testing.B) {
+		record := Record{
+			Time:    fixedTime,
+			Level:   slog.LevelInfo,
+			Message: "test",
+			Attrs: []slog.Attr{
+				slog.String("request_id", "123"),
+				slog.Int("status", 200),
+			},
+			Journal: OperationJournal{
+				{Type: OpAttrs, Attrs: []slog.Attr{
+					slog.String("service", "api"),
+					slog.String("version", "v1"),
+				}},
+				{Type: OpGroup, Group: "http"},
+				{Type: OpAttrs, Attrs: []slog.Attr{
+					slog.String("method", "GET"),
+					slog.String("path", "/users"),
+				}},
+				{Type: OpGroup, Group: "response"},
+				{Type: OpAttrs, Attrs: []slog.Attr{
+					slog.Duration("latency", 100*time.Millisecond),
+				}},
+			},
+		}
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = record.Realize()
+		}
+	})
+}
+
+func BenchmarkApplyGroups(b *testing.B) {
+	attr := slog.String("key", "value")
+
+	b.Run("NoGroups", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = applyGroups(attr, nil)
+		}
+	})
+
+	b.Run("SingleGroup", func(b *testing.B) {
+		groups := []string{"group1"}
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = applyGroups(attr, groups)
+		}
+	})
+
+	b.Run("ThreeGroups", func(b *testing.B) {
+		groups := []string{"level1", "level2", "level3"}
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = applyGroups(attr, groups)
+		}
+	})
+
+	b.Run("FiveGroups", func(b *testing.B) {
+		groups := []string{"level1", "level2", "level3", "level4", "level5"}
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = applyGroups(attr, groups)
 		}
 	})
 }

@@ -152,7 +152,7 @@ func TestWithContext(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Add more records to exceed max size
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		store.Append(createTestRecord(time.Now(), slog.LevelInfo, "New Message"))
 	}
 

@@ -19,7 +19,7 @@ func setupTestStorage(tb testing.TB, size int, opts ...Option) (*MemStorage, []*
 	// This is important for maxAgeCleanup tests
 	baseTime := time.Now().Add(-time.Hour) // Base time 1 hour ago
 
-	for i := 0; i < size; i++ {
+	for i := range size {
 		records[i] = &Record{
 			Time:    baseTime.Add(time.Duration(i) * time.Second), // Each record is 1 second newer
 			Level:   slog.LevelInfo,
@@ -122,383 +122,347 @@ func TestCleanupFunctions(t *testing.T) {
 }
 
 func BenchmarkCleanup_MaxSize(b *testing.B) {
-	testSizes := []int{100, 1000, 10000}
-	maxSizes := []int{10, 100, 1000}
+	testCases := []struct {
+		initialSize int
+		maxSize     int
+		numRecords  int
+	}{
+		{0, 10, 1000},
+		{0, 100, 1000},
+		{0, 1000, 1000},
+		{100, 10, 1000},
+		{100, 100, 1000},
+		{100, 1000, 1000},
+		{1000, 10, 10000},
+		{1000, 100, 10000},
+		{1000, 1000, 10000},
+		{10000, 10, 100000},
+		{10000, 100, 100000},
+		{10000, 1000, 100000},
+	}
 
-	for _, size := range testSizes {
-		sizeName := fmt.Sprintf("Size_%d", size)
-		b.Run(sizeName, func(b *testing.B) {
-			for _, maxSize := range maxSizes {
-				retention := int(float64(maxSize) / float64(size) * 100)
+	for _, tc := range testCases {
+		name := fmt.Sprintf("InitialSize_%d_MaxSize_%d_Records_%d",
+			tc.initialSize, tc.maxSize, tc.numRecords)
 
-				// Skip unreasonable combinations
-				if maxSize > size {
-					continue
-				}
-
-				// Benchmark synchronous cleanup
-				testName := fmt.Sprintf("Sync_MaxSize_%d_%dpct", maxSize, retention)
-				b.Run(testName, func(b *testing.B) {
-					// Use very short debounce time for benchmarking
-					store, _ := setupTestStorage(b, size,
-						WithMaxSize(maxSize),
+		b.Run(name, func(b *testing.B) {
+			b.Run("Sync", func(b *testing.B) {
+				for b.Loop() {
+					b.StopTimer()
+					store, _ := setupTestStorage(b, tc.initialSize,
+						WithMaxSize(tc.maxSize),
 						WithAsyncCleanup(false))
 
-					b.ResetTimer()
-					for i := 0; i < b.N; i++ {
-						// Add a new record to trigger cleanup
+					tm := time.Now()
+					b.StartTimer()
+					for range tc.numRecords {
 						store.Append(&Record{
-							Time:    time.Now(),
+							Time:    tm,
 							Level:   slog.LevelInfo,
 							Message: "trigger cleanup",
 						})
 					}
-				})
+				}
+			})
 
-				// Benchmark asynchronous cleanup
-				testName = fmt.Sprintf("Async_MaxSize_%d_%dpct", maxSize, retention)
-				b.Run(testName, func(b *testing.B) {
-					ctx, cancel := context.WithCancel(context.Background())
-					defer cancel()
-
-					// Use very short debounce time for benchmarking
-					store, _ := setupTestStorage(b, size,
-						WithMaxSize(maxSize),
+			b.Run("Async", func(b *testing.B) {
+				for b.Loop() {
+					b.StopTimer()
+					store, _ := setupTestStorage(b, tc.initialSize,
+						WithMaxSize(tc.maxSize),
 						WithAsyncCleanup(true),
-						WithContext(ctx),
+						WithContext(b.Context()),
 						WithDebounceTime(1*time.Millisecond))
 
-					b.ResetTimer()
-					for i := 0; i < b.N; i++ {
-						// Add a new record to trigger cleanup
+					tm := time.Now()
+					b.StartTimer()
+					for range tc.numRecords {
 						store.Append(&Record{
-							Time:    time.Now(),
+							Time:    tm,
 							Level:   slog.LevelInfo,
 							Message: "trigger cleanup",
 						})
-
-						// For async we need to ensure the cleanup has a chance to run
-						if i%100 == 0 {
-							time.Sleep(2 * time.Millisecond)
-						}
 					}
-				})
-			}
+				}
+			})
+
+			b.Run("Sync Concurrent", func(b *testing.B) {
+				for b.Loop() {
+					b.StopTimer()
+					store, _ := setupTestStorage(b, tc.initialSize,
+						WithMaxSize(tc.maxSize),
+						WithAsyncCleanup(false))
+
+					wg := &sync.WaitGroup{}
+					wg.Add(tc.numRecords)
+					tm := time.Now()
+					ctx, cancel := context.WithCancel(b.Context())
+					for range tc.numRecords {
+						go func() {
+							defer wg.Done()
+							<-ctx.Done() // wait for context to be canceled
+							store.Append(&Record{
+								Time:    tm,
+								Level:   slog.LevelInfo,
+								Message: "trigger cleanup",
+							})
+						}()
+					}
+
+					b.StartTimer()
+					cancel()
+					wg.Wait()
+				}
+			})
+
+			b.Run("Async Concurrent", func(b *testing.B) {
+				for b.Loop() {
+					b.StopTimer()
+					store, _ := setupTestStorage(b, tc.initialSize,
+						WithMaxSize(tc.maxSize),
+						WithAsyncCleanup(true),
+						WithContext(b.Context()),
+						WithDebounceTime(1*time.Millisecond))
+
+					wg := &sync.WaitGroup{}
+					wg.Add(tc.numRecords)
+					tm := time.Now()
+					ctx, cancel := context.WithCancel(b.Context())
+					for range tc.numRecords {
+						go func() {
+							defer wg.Done()
+							<-ctx.Done() // wait for context to be canceled
+							store.Append(&Record{
+								Time:    tm,
+								Level:   slog.LevelInfo,
+								Message: "trigger cleanup",
+							})
+						}()
+					}
+
+					b.StartTimer()
+					cancel()
+					wg.Wait()
+				}
+			})
 		})
 	}
 }
 
 func BenchmarkCleanup_MaxAge(b *testing.B) {
-	testSizes := []int{100, 1000, 10000}
-	maxAges := []time.Duration{10 * time.Second, 30 * time.Second, 5 * time.Minute}
+	testCases := []struct {
+		initialSize int
+		maxAge      time.Duration
+		numRecords  int
+		ageStr      string
+	}{
+		{0, 10 * time.Millisecond, 100, "10ms"},
+		{0, 100 * time.Millisecond, 100, "100ms"},
+		{0, 1 * time.Second, 100, "1s"},
+		{100, 10 * time.Millisecond, 1000, "10ms"},
+		{100, 100 * time.Millisecond, 1000, "100ms"},
+		{100, 1 * time.Second, 1000, "1s"},
+		{1000, 10 * time.Millisecond, 10000, "10ms"},
+		{1000, 100 * time.Millisecond, 10000, "100ms"},
+		{1000, 1 * time.Second, 10000, "1s"},
+	}
 
-	for _, size := range testSizes {
-		sizeName := fmt.Sprintf("Size_%d", size)
-		b.Run(sizeName, func(b *testing.B) {
-			for _, maxAge := range maxAges {
-				// Calculate approximate retention percentage (for test naming)
-				retention := int(float64(maxAge.Seconds()) / float64(size) * 100)
-				if retention > 100 {
-					retention = 100
-				}
+	for _, tc := range testCases {
+		name := fmt.Sprintf("InitialSize_%d_MaxAge_%s_Records_%d",
+			tc.initialSize, tc.ageStr, tc.numRecords)
 
-				// Benchmark synchronous cleanup
-				ageName := maxAge.String()
-				testName := fmt.Sprintf("Sync_MaxAge_%s_%dpct", ageName, retention)
-				b.Run(testName, func(b *testing.B) {
-					store, _ := setupTestStorage(b, size,
-						WithMaxAge(maxAge),
+		b.Run(name, func(b *testing.B) {
+			b.Run("Sync", func(b *testing.B) {
+				for b.Loop() {
+					b.StopTimer()
+					store, _ := setupTestStorage(b, tc.initialSize,
+						WithMaxAge(tc.maxAge),
 						WithAsyncCleanup(false))
 
-					b.ResetTimer()
-					for i := 0; i < b.N; i++ {
-						// Add a new record to trigger cleanup
+					tm := time.Now()
+					b.StartTimer()
+					for range tc.numRecords {
 						store.Append(&Record{
-							Time:    time.Now(),
+							Time:    tm,
 							Level:   slog.LevelInfo,
 							Message: "trigger cleanup",
 						})
 					}
-				})
+				}
+			})
 
-				// Benchmark asynchronous cleanup
-				testName = fmt.Sprintf("Async_MaxAge_%s_%dpct", ageName, retention)
-				b.Run(testName, func(b *testing.B) {
-					ctx, cancel := context.WithCancel(context.Background())
-					defer cancel()
-
-					// Use very short debounce time for benchmarking
-					store, _ := setupTestStorage(b, size,
-						WithMaxAge(maxAge),
+			b.Run("Async", func(b *testing.B) {
+				for b.Loop() {
+					b.StopTimer()
+					store, _ := setupTestStorage(b, 0,
+						WithMaxAge(tc.maxAge),
 						WithAsyncCleanup(true),
-						WithContext(ctx),
+						WithContext(b.Context()),
 						WithDebounceTime(1*time.Millisecond))
 
-					b.ResetTimer()
-					for i := 0; i < b.N; i++ {
-						// Add a new record to trigger cleanup
+					tm := time.Now()
+					b.StartTimer()
+					for range tc.numRecords {
 						store.Append(&Record{
-							Time:    time.Now(),
+							Time:    tm,
 							Level:   slog.LevelInfo,
 							Message: "trigger cleanup",
 						})
-
-						// For async we need to ensure the cleanup has a chance to run
-						if i%100 == 0 {
-							time.Sleep(2 * time.Millisecond)
-						}
 					}
-				})
-			}
-		})
-	}
-}
+				}
+			})
 
-func BenchmarkCleanup_HighLoad(b *testing.B) {
-	// Test high-concurrency scenarios
-	concurrencyLevels := []int{10, 50, 100}
+			b.Run("Sync Concurrent", func(b *testing.B) {
+				for b.Loop() {
+					b.StopTimer()
+					store, _ := setupTestStorage(b, 0,
+						WithMaxAge(tc.maxAge),
+						WithAsyncCleanup(false))
 
-	for _, concurrency := range concurrencyLevels {
-		concName := fmt.Sprintf("Concurrency_%d", concurrency)
-
-		// Test MaxSize with high concurrency
-		b.Run("MaxSize_"+concName, func(b *testing.B) {
-			b.Run("Sync", func(b *testing.B) {
-				store, _ := setupTestStorage(b, 1000,
-					WithMaxSize(100),
-					WithAsyncCleanup(false))
-
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					var wg sync.WaitGroup
-					wg.Add(concurrency)
-
-					for j := 0; j < concurrency; j++ {
+					wg := &sync.WaitGroup{}
+					wg.Add(tc.numRecords)
+					tm := time.Now()
+					ctx, cancel := context.WithCancel(b.Context())
+					for range tc.numRecords {
 						go func() {
+							defer wg.Done()
+							<-ctx.Done()
 							store.Append(&Record{
-								Time:    time.Now(),
+								Time:    tm,
 								Level:   slog.LevelInfo,
-								Message: "concurrent append",
+								Message: "trigger cleanup",
 							})
-							wg.Done()
 						}()
 					}
 
+					b.StartTimer()
+					cancel()
 					wg.Wait()
 				}
 			})
 
-			b.Run("Async", func(b *testing.B) {
-				ctx, cancel := context.WithCancel(context.Background())
-				defer cancel()
+			b.Run("Async Concurrent", func(b *testing.B) {
+				for b.Loop() {
+					b.StopTimer()
+					store, _ := setupTestStorage(b, tc.initialSize,
+						WithMaxAge(tc.maxAge),
+						WithAsyncCleanup(true),
+						WithContext(b.Context()),
+						WithDebounceTime(1*time.Millisecond))
 
-				store, _ := setupTestStorage(b, 1000,
-					WithMaxSize(100),
-					WithAsyncCleanup(true),
-					WithContext(ctx),
-					WithDebounceTime(1*time.Millisecond))
-
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					var wg sync.WaitGroup
-					wg.Add(concurrency)
-
-					for j := 0; j < concurrency; j++ {
+					wg := &sync.WaitGroup{}
+					wg.Add(tc.numRecords)
+					tm := time.Now()
+					ctx, cancel := context.WithCancel(b.Context())
+					for range tc.numRecords {
 						go func() {
+							defer wg.Done()
+							<-ctx.Done()
 							store.Append(&Record{
-								Time:    time.Now(),
+								Time:    tm,
 								Level:   slog.LevelInfo,
-								Message: "concurrent append",
+								Message: "trigger cleanup",
 							})
-							wg.Done()
 						}()
 					}
 
+					b.StartTimer()
+					cancel()
 					wg.Wait()
-
-					// Give cleanup a chance to run
-					if i%10 == 0 {
-						time.Sleep(2 * time.Millisecond)
-					}
-				}
-			})
-		})
-
-		// Test MaxAge with high concurrency
-		b.Run("MaxAge_"+concName, func(b *testing.B) {
-			b.Run("Sync", func(b *testing.B) {
-				store, _ := setupTestStorage(b, 1000,
-					WithMaxAge(30*time.Second),
-					WithAsyncCleanup(false))
-
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					var wg sync.WaitGroup
-					wg.Add(concurrency)
-
-					for j := 0; j < concurrency; j++ {
-						go func() {
-							store.Append(&Record{
-								Time:    time.Now(),
-								Level:   slog.LevelInfo,
-								Message: "concurrent append",
-							})
-							wg.Done()
-						}()
-					}
-
-					wg.Wait()
-				}
-			})
-
-			b.Run("Async", func(b *testing.B) {
-				ctx, cancel := context.WithCancel(context.Background())
-				defer cancel()
-
-				store, _ := setupTestStorage(b, 1000,
-					WithMaxAge(30*time.Second),
-					WithAsyncCleanup(true),
-					WithContext(ctx),
-					WithDebounceTime(1*time.Millisecond))
-
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					var wg sync.WaitGroup
-					wg.Add(concurrency)
-
-					for j := 0; j < concurrency; j++ {
-						go func() {
-							store.Append(&Record{
-								Time:    time.Now(),
-								Level:   slog.LevelInfo,
-								Message: "concurrent append",
-							})
-							wg.Done()
-						}()
-					}
-
-					wg.Wait()
-
-					// Give cleanup a chance to run
-					if i%10 == 0 {
-						time.Sleep(2 * time.Millisecond)
-					}
 				}
 			})
 		})
 	}
 }
 
-// BenchmarkCleanup_MixedWorkload tests a mixed workload of append and retrieve operations
+
 func BenchmarkCleanup_MixedWorkload(b *testing.B) {
-	readRatio := 0.7 // 70% reads, 30% writes
+	testCases := []struct {
+		initialSize int
+		maxSize     int
+		numRecords  int
+		readRatio   float64
+	}{
+		{100, 50, 1000, 0.5},
+		{100, 50, 1000, 0.9},
+		{1000, 500, 1000, 0.5},
+		{1000, 500, 1000, 0.9},
+		{10000, 5000, 10000, 0.5},
+		{10000, 5000, 10000, 0.9},
+	}
 
-	// Test with both cleanup strategies
-	b.Run("MaxSize", func(b *testing.B) {
-		b.Run("Sync", func(b *testing.B) {
-			store, _ := setupTestStorage(b, 1000,
-				WithMaxSize(500),
-				WithAsyncCleanup(false))
+	for _, tc := range testCases {
+		name := fmt.Sprintf("InitialSize_%d_MaxSize_%d_Records_%d_ReadRatio_%.0f",
+			tc.initialSize, tc.maxSize, tc.numRecords, tc.readRatio*100)
 
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if float64(i%100)/100 < readRatio {
-					// Read operation
-					_ = store.GetAll()
-				} else {
-					// Write operation - triggers sync cleanup
-					store.Append(&Record{
-						Time:    time.Now(),
-						Level:   slog.LevelInfo,
-						Message: "mixed workload",
-					})
+		b.Run(name, func(b *testing.B) {
+			b.Run("Sync", func(b *testing.B) {
+				for b.Loop() {
+					b.StopTimer()
+					store, _ := setupTestStorage(b, tc.initialSize,
+						WithMaxSize(tc.maxSize),
+						WithAsyncCleanup(false))
+
+					wg := &sync.WaitGroup{}
+					wg.Add(tc.numRecords)
+					tm := time.Now()
+					ctx, cancel := context.WithCancel(b.Context())
+					for i := range tc.numRecords {
+						go func() {
+							defer wg.Done()
+							<-ctx.Done()
+							if float64(i%100)/100 < tc.readRatio {
+								_ = store.GetAll()
+							} else {
+								store.Append(&Record{
+									Time:    tm,
+									Level:   slog.LevelInfo,
+									Message: "mixed workload",
+								})
+							}
+						}()
+					}
+
+					b.StartTimer()
+					cancel()
+					wg.Wait()
 				}
-			}
+			})
+
+			b.Run("Async", func(b *testing.B) {
+				for b.Loop() {
+					b.StopTimer()
+					store, _ := setupTestStorage(b, tc.initialSize,
+						WithMaxSize(tc.maxSize),
+						WithAsyncCleanup(true),
+						WithContext(b.Context()),
+						WithDebounceTime(1*time.Millisecond))
+
+					wg := &sync.WaitGroup{}
+					wg.Add(tc.numRecords)
+					tm := time.Now()
+					ctx, cancel := context.WithCancel(b.Context())
+					for i := range tc.numRecords {
+						go func() {
+							defer wg.Done()
+							<-ctx.Done()
+							if float64(i%100)/100 < tc.readRatio {
+								_ = store.GetAll()
+							} else {
+								store.Append(&Record{
+									Time:    tm,
+									Level:   slog.LevelInfo,
+									Message: "mixed workload",
+								})
+							}
+						}()
+					}
+
+					b.StartTimer()
+					cancel()
+					wg.Wait()
+				}
+			})
 		})
-
-		b.Run("Async", func(b *testing.B) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-
-			store, _ := setupTestStorage(b, 1000,
-				WithMaxSize(500),
-				WithAsyncCleanup(true),
-				WithContext(ctx),
-				WithDebounceTime(1*time.Millisecond))
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if float64(i%100)/100 < readRatio {
-					// Read operation
-					_ = store.GetAll()
-				} else {
-					// Write operation - triggers async cleanup
-					store.Append(&Record{
-						Time:    time.Now(),
-						Level:   slog.LevelInfo,
-						Message: "mixed workload",
-					})
-				}
-
-				// Occasionally let async worker run
-				if i%1000 == 0 {
-					time.Sleep(2 * time.Millisecond)
-				}
-			}
-		})
-	})
-
-	b.Run("MaxAge", func(b *testing.B) {
-		b.Run("Sync", func(b *testing.B) {
-			store, _ := setupTestStorage(b, 1000,
-				WithMaxAge(30*time.Second),
-				WithAsyncCleanup(false))
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if float64(i%100)/100 < readRatio {
-					// Read operation
-					_ = store.GetAll()
-				} else {
-					// Write operation - triggers sync cleanup
-					store.Append(&Record{
-						Time:    time.Now(),
-						Level:   slog.LevelInfo,
-						Message: "mixed workload",
-					})
-				}
-			}
-		})
-
-		b.Run("Async", func(b *testing.B) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-
-			store, _ := setupTestStorage(b, 1000,
-				WithMaxAge(30*time.Second),
-				WithAsyncCleanup(true),
-				WithContext(ctx),
-				WithDebounceTime(1*time.Millisecond))
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				if float64(i%100)/100 < readRatio {
-					// Read operation
-					_ = store.GetAll()
-				} else {
-					// Write operation - triggers async cleanup
-					store.Append(&Record{
-						Time:    time.Now(),
-						Level:   slog.LevelInfo,
-						Message: "mixed workload",
-					})
-				}
-
-				// Occasionally let async worker run
-				if i%1000 == 0 {
-					time.Sleep(2 * time.Millisecond)
-				}
-			}
-		})
-	})
+	}
 }
