@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"reflect"
@@ -23,7 +22,7 @@ func TestNewRecord(t *testing.T) {
 		)
 
 		// Create a storage.Record
-		record := NewRecord(context.Background(), nil, &slogRecord)
+		record := NewRecord(t.Context(), nil, &slogRecord)
 
 		// Basic validation
 		if record == nil {
@@ -83,7 +82,7 @@ func TestNewRecord(t *testing.T) {
 
 	t.Run("Nil record input", func(t *testing.T) {
 		// Test with nil slog.Record
-		record := NewRecord(context.Background(), nil, nil)
+		record := NewRecord(t.Context(), nil, nil)
 		if record != nil {
 			t.Error("Expected nil record when input is nil")
 		}
@@ -92,7 +91,7 @@ func TestNewRecord(t *testing.T) {
 	t.Run("Empty groups", func(t *testing.T) {
 		// Create record with no groups
 		slogRecord := slog.NewRecord(fixedTime, slog.LevelInfo, "no groups", 0)
-		record := NewRecord(context.Background(), nil, &slogRecord)
+		record := NewRecord(t.Context(), nil, &slogRecord)
 
 		if record == nil {
 			t.Fatal("Expected non-nil record")
@@ -103,7 +102,7 @@ func TestNewRecord(t *testing.T) {
 	t.Run("No attributes", func(t *testing.T) {
 		// Create record with no attributes
 		slogRecord := slog.NewRecord(fixedTime, slog.LevelInfo, "no attrs", 0)
-		record := NewRecord(context.Background(), nil, &slogRecord)
+		record := NewRecord(t.Context(), nil, &slogRecord)
 
 		if record == nil {
 			t.Fatal("Expected non-nil record")
@@ -136,7 +135,7 @@ func TestNewRecord(t *testing.T) {
 		)
 
 		// Create storage record
-		record := NewRecord(context.Background(), nil, &slogRecord)
+		record := NewRecord(t.Context(), nil, &slogRecord)
 
 		if record == nil {
 			t.Fatal("Expected non-nil record")
@@ -157,7 +156,7 @@ func TestNewRecord(t *testing.T) {
 
 	t.Run("PC preservation", func(t *testing.T) {
 		slogRecord := slog.NewRecord(fixedTime, slog.LevelInfo, "pc test", 12345)
-		record := NewRecord(context.Background(), nil, &slogRecord)
+		record := NewRecord(t.Context(), nil, &slogRecord)
 
 		if record == nil {
 			t.Fatal("Expected non-nil record")
@@ -175,7 +174,7 @@ func TestNewRecord(t *testing.T) {
 		}
 
 		slogRecord := slog.NewRecord(fixedTime, slog.LevelInfo, "journal test", 0)
-		record := NewRecord(context.Background(), journal, &slogRecord)
+		record := NewRecord(t.Context(), journal, &slogRecord)
 
 		if record == nil {
 			t.Fatal("Expected non-nil record")
@@ -559,7 +558,7 @@ func TestApplyGroups(t *testing.T) {
 
 func BenchmarkNewRecord(b *testing.B) {
 	fixedTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
-	ctx := context.Background()
+	ctx := b.Context()
 
 	b.Run("WithoutAttrs", func(b *testing.B) {
 		b.ReportAllocs()
