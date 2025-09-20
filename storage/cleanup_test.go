@@ -375,7 +375,6 @@ func BenchmarkCleanup_MaxAge(b *testing.B) {
 	}
 }
 
-
 func BenchmarkCleanup_MixedWorkload(b *testing.B) {
 	testCases := []struct {
 		initialSize int

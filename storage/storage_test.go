@@ -1,9 +1,11 @@
 package storage
 
 import (
+	"context"
 	"log/slog"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -461,5 +463,110 @@ func TestMemStorageCleanup(t *testing.T) {
 		if len(records) != 1 {
 			t.Errorf("Expected 1 record when no cleanup func, got %d", len(records))
 		}
+	})
+}
+
+func TestStartCleanupWorker(t *testing.T) {
+	t.Run("TimerDrainCondition", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			// This test covers the timer drain condition in StartCleanupWorker
+			// that happens when the timer needs to be stopped and drained
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			// Create storage with async cleanup enabled and a very short debounce time
+			storage := NewRecordStorage(
+				WithAsyncCleanup(true),
+				WithContext(ctx),
+				WithDebounceTime(1*time.Millisecond), // Very short to trigger timer quickly
+				WithCleanupFunc(func(records []Record) []Record {
+					// Return the same records (no cleanup)
+					return records
+				}),
+			)
+
+			// Add a record to trigger cleanup
+			storage.Append(&Record{Message: "test"})
+
+			// Immediately trigger another cleanup to create the timer stop/drain condition
+			storage.triggerCleanup()
+
+			// Trigger another cleanup which should cause the timer to be stopped and drained
+			storage.triggerCleanup()
+
+			// Cancel context to stop cleanup worker
+			cancel()
+
+			// Wait for all goroutines to settle
+			synctest.Wait()
+
+			// Verify records are still there
+			records := storage.GetAll()
+			if len(records) != 1 {
+				t.Errorf("Expected 1 record, got %d", len(records))
+			}
+		})
+	})
+
+	t.Run("ContextCancellation", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			// Test the context cancellation path in StartCleanupWorker
+			ctx, cancel := context.WithCancel(t.Context())
+
+			storage := NewRecordStorage(
+				WithAsyncCleanup(true),
+				WithContext(ctx),
+				WithDebounceTime(100*time.Millisecond),
+			)
+
+			// Add a record
+			storage.Append(&Record{Message: "test"})
+
+			// Cancel context immediately to test the context cancellation path
+			cancel()
+
+			// Wait for all goroutines to settle
+			synctest.Wait()
+
+			// Verify record is still there
+			records := storage.GetAll()
+			if len(records) != 1 {
+				t.Errorf("Expected 1 record, got %d", len(records))
+			}
+		})
+	})
+
+	t.Run("AlreadyRunning", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			// Test the case where StartCleanupWorker is called when already running
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			storage := NewRecordStorage(
+				WithAsyncCleanup(true),
+				WithContext(ctx),
+				WithDebounceTime(100*time.Millisecond),
+			)
+
+			// First call should start the worker
+			if storage.asyncCleanupRunning.Load() {
+				t.Error("Cleanup worker should not be running initially")
+			}
+
+			// Add a record to trigger the first cleanup worker
+			storage.Append(&Record{Message: "test"})
+
+			// Try to start another worker - this should return immediately
+			go storage.StartCleanupWorker()
+
+			// Wait for all goroutines to settle
+			synctest.Wait()
+
+			// Verify record is there
+			records := storage.GetAll()
+			if len(records) != 1 {
+				t.Errorf("Expected 1 record, got %d", len(records))
+			}
+		})
 	})
 }
